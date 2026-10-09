@@ -100,6 +100,12 @@ def cmd_serve(args):
 
 # ---------------------------------------------------------------------------
 def main(argv=None):
+    # Windows 默认控制台编码（cp1252/gbk）无法打印中文：强制 UTF-8 + 替换不可编码字符
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except AttributeError:            # Python < 3.7 无 reconfigure
+            pass
     parser = argparse.ArgumentParser(
         prog="kb", description="callfans 知识库统一 CLI")
     sub = parser.add_subparsers(dest="command", required=True)

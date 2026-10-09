@@ -38,6 +38,9 @@ jobs:
           python-version: "3.11"
 
       - name: Offline tests (打包前冒烟)
+        env:
+          PYTHONUTF8: "1"        # Windows 控制台默认 cp1252，中文输出需 UTF-8 模式
+          PYTHONIOENCODING: utf-8
         run: |
           python demo/run_demo.py
           python demo/run_memory_demo.py
