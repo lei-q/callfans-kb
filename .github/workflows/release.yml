@@ -21,21 +21,26 @@ jobs:
           - os: macos-latest        # Apple Silicon
             label: macos-arm64
             asset: callfans-macos-arm64.zip
-          - os: macos-13            # Intel Mac
-            label: macos-x64
+            arch: arm64
+          - os: macos-latest        # Intel Mac（Intel runner 已退役；arm64 runner
+            label: macos-x64        #  + Rosetta 装 x64 Python 交叉构建）
             asset: callfans-macos-x64.zip
+            arch: x64
           - os: windows-latest
             label: windows-x64
             asset: callfans-windows-x64.zip
+            arch: x64
           - os: ubuntu-latest       # 无桌面版（CLI + serve）
             label: linux-x64
             asset: callfans-linux-x64.tar.gz
+            arch: x64
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          architecture: ${{ matrix.arch }}
 
       - name: Offline tests (打包前冒烟)
         env:
