@@ -95,7 +95,7 @@ def cmd_serve(args):
     sys.path.insert(0, os.path.dirname(os.path.dirname(
         os.path.abspath(__file__))))
     from kb.serve import run
-    run(host=args.host, port=args.port)
+    run(host=args.host, port=args.port, open_browser=not args.no_browser)
 
 
 # ---------------------------------------------------------------------------
@@ -128,9 +128,11 @@ def main(argv=None):
     p.add_argument("--llm", action="store_true")
     p.set_defaults(func=_maintenance_main)
 
-    p = sub.add_parser("serve", help="本地 HTTP API")
+    p = sub.add_parser("serve", help="本地 HTTP API + Web 控制台")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--no-browser", action="store_true",
+                   help="不自动打开浏览器（无头环境用）")
     p.set_defaults(func=cmd_serve)
 
     args = parser.parse_args(argv)

@@ -50,6 +50,13 @@ python3 demo/run_llm_demo.py
 
 配置说明见 `.env.example`。
 
+## 下载与安装（Release 应用包）
+
+GitHub Release 提供四平台自包含包（macOS arm64/x64、Windows x64、
+Linux x64 无桌面版）：解压后 `./callfans` 无参数启动即打开 Web 控制台；
+无头环境 `./callfans serve --no-browser`；CLI 用法同 `python3 -m kb`。
+自己构建：`git tag v0.1.0 && git push origin v0.1.0` 触发 Actions。
+
 ## 项目结构
 
 ```text

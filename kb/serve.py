@@ -176,7 +176,7 @@ def make_handler(tools, queue, adapter):
     return Handler
 
 
-def run(host="127.0.0.1", port=8765):
+def run(host="127.0.0.1", port=8765, open_browser=None):
     import os
     import sys
     sys.path.insert(0, os.path.dirname(os.path.dirname(
@@ -185,12 +185,19 @@ def run(host="127.0.0.1", port=8765):
     from kb.factory import open_kb, open_queue
     from kb.tools import KBTools
 
+    if open_browser is None:
+        open_browser = (os.environ.get("CALLFANS_NO_BROWSER", "") == ""
+                        and sys.stdout.isatty())   # 无头/管道环境不自动开浏览器
     store, queue = open_kb()
     tools = KBTools(store, queue)
     adapter = ExecutorAdapter(tools)
     httpd = ThreadingHTTPServer((host, port), make_handler(tools, queue, adapter))
     print(f"kb serve  http://{host}:{port}  "
           f"backend={type(store).__name__}  （Ctrl+C 停止）")
+    if open_browser:
+        import webbrowser
+        threading.Timer(1.0, lambda: webbrowser.open(
+            f"http://{host}:{port}/")).start()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

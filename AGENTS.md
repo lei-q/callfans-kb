@@ -8,6 +8,9 @@ callfans 知识库 MVP：云手机社交矩阵的知识中枢（本体 Schema + 
 - `docs/` — 设计文档：`01-knowledge-schema-v1.md`（Schema）、`02-query-and-write-protocol-v1.md`（查询/回写协议）、`03-memory-and-consensus-v1.md`（长期记忆与共识）、`04-deployment-and-maintenance-v1.md`（部署/存储后端/定时任务/备份）
 - `demo/` — `seed.py`（种子数据，可注入任意存储后端）、`run_demo.py`（离线端到端，不调 LLM）、`run_llm_demo.py`（LLM 实机验证）、`run_executor_adapter_demo.py`（执行层适配全链路验证，FakeRunner）、`run_memory_demo.py`（长期记忆系统全链路验证，无 LLM）、`run_memory_llm_demo.py`（记忆链路 LLM 实机验证）、`run_sqlite_demo.py`（SQLite 嵌入式后端全链路）、`run_neo4j_demo.py`（Neo4j 持久化全链路：并发去重/状态恢复）、`xhs.py`（云机执行器实例：小红书发布视频，依赖外部 sma_autoui，不在本仓验证范围内）
 - `docker-compose.yml` — Neo4j 持久化后端容器（CALLFANS_NEO4J_* 环境变量）
+- `callfans.py` — 应用入口（PyInstaller 打包目标；无参数=启动 Web 控制台）
+- `deploy/callfans.service` — Linux 无头部署 systemd 单元示例
+- `.github/workflows/release.yml` — CI/CD：打 tag v* 触发四平台构建（PyInstaller）+ 自动 Release
 - `README.md` — 快速开始与结构说明；`deepseek_markdown_20261009_7e1431.md` — 本体模型与 AI 调度的设计讨论笔记（2026-10-09）
 - `.agents/skills/` — 飞书官方 Agent Skills（lark-* 系列，由 skills CLI 安装并 symlink 到 `.claude/`、`.qwen/`、`.trae/` 等目录；这些点目录不是项目代码）
 - `.env.example` — LLM 接入配置模板

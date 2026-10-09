@@ -1,0 +1,116 @@
+name: Release
+
+# 打 tag（v*）触发：四平台构建应用包 → 自动创建 GitHub Release
+# 手动触发：Actions 页面 Run workflow
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest        # Apple Silicon
+            label: macos-arm64
+            asset: callfans-macos-arm64.zip
+          - os: macos-13            # Intel Mac
+            label: macos-x64
+            asset: callfans-macos-x64.zip
+          - os: windows-latest
+            label: windows-x64
+            asset: callfans-windows-x64.zip
+          - os: ubuntu-latest       # 无桌面版（CLI + serve）
+            label: linux-x64
+            asset: callfans-linux-x64.tar.gz
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Offline tests (打包前冒烟)
+        run: |
+          python demo/run_demo.py
+          python demo/run_memory_demo.py
+          python demo/run_executor_adapter_demo.py
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Build single-file binary
+        shell: bash
+        run: |
+          SEP=":"
+          if [ "$RUNNER_OS" = "Windows" ]; then SEP=";"; fi
+          pyinstaller --onefile --name callfans \
+            --collect-submodules kb \
+            --add-data "kb/static${SEP}kb/static" \
+            --clean --noconfirm callfans.py
+
+      # macOS：ad-hoc 签名（避免用户防火墙静默拦截未签名后台进程的入站连接；
+      # 首次运行系统可能仍会询问"允许传入连接"，属正常）
+      - name: Ad-hoc codesign (macOS)
+        if: runner.os == 'macOS'
+        run: codesign --force --sign - dist/callfans
+
+      - name: Package (macOS / Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir -p release/docs release/deploy
+          cp dist/callfans release/
+          cp README.md LICENSE release/
+          cp docs/*.md release/docs/
+          cp deploy/callfans.service release/deploy/
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            tar -czf "${{ matrix.asset }}" -C release .
+          else
+            zip -r "${{ matrix.asset }}" -j release/callfans \
+              && zip -r "${{ matrix.asset }}" README.md LICENSE docs deploy
+          fi
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release\docs, release\deploy | Out-Null
+          Copy-Item dist\callfans.exe release\
+          Copy-Item README.md, LICENSE release\
+          Copy-Item docs\*.md release\docs\
+          Copy-Item deploy\callfans.service release\deploy\
+          Compress-Archive -Path release\* -DestinationPath ${{ matrix.asset }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+
+  release:
+    name: create release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/callfans-macos-arm64.zip
+            dist/callfans-macos-x64.zip
+            dist/callfans-windows-x64.zip
+            dist/callfans-linux-x64.tar.gz

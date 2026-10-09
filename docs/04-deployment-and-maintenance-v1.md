@@ -145,3 +145,27 @@ python3 demo/run_memory_demo.py             # 记忆系统（内存模式）
 python3 demo/run_neo4j_demo.py              # Neo4j 全链路 + 并发 + 恢复
 CALLFANS_STORE=neo4j python3 -m kb.maintenance daily   # 维护 CLI
 ```
+
+## 6. CI/CD（GitHub Actions）
+
+打 tag 触发自动构建与发布（`.github/workflows/release.yml`）：
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0   # → 四平台构建 → 自动创建 Release
+```
+
+| 产物 | 运行器 | 说明 |
+| --- | --- | --- |
+| callfans-macos-arm64.zip | macos-latest | Apple Silicon 单文件二进制 |
+| callfans-macos-x64.zip | macos-13 | Intel Mac |
+| callfans-windows-x64.zip | windows-latest | 单 exe |
+| callfans-linux-x64.tar.gz | ubuntu-latest | 无桌面版（CLI + serve + systemd 单元示例） |
+
+- 构建前自动跑三个离线 Demo 冒烟（run_demo / run_memory_demo / run_executor_adapter_demo）
+- PyInstaller onefile + `--collect-submodules kb`（懒加载模块全部收入）+ 内置 Web 控制台
+- macOS 产物 ad-hoc 签名：用户首次运行若系统询问"允许传入连接"选允许即可
+- Release Notes 由 GitHub 自动生成（generate_release_notes）
+
+应用包内：`callfans` 二进制 + README + LICENSE + docs/ + deploy/callfans.service（Linux）。
+使用：解压后 `./callfans`（无参数 = 打开 Web 控制台）；无头环境
+`./callfans serve --no-browser`；systemd 部署见 deploy/callfans.service。
