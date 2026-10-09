@@ -1,0 +1,149 @@
+"""
+统一 CLI：python3 -m kb <command>
+
+命令与 GUI 动作一一对应（Cmd+K 面板复用同一套词汇）：
+  status                      图谱/后端/账号概览
+  query <文本>                知识检索（bigram 倒排）
+  memory <account_id>         人可读记忆摘要（分层路由索引）
+  plan <account> <action> [topic] [--job-id]   决策 → 执行命令（dry run）
+  maintenance <daily|weekly|monthly|yearly> [--llm]   维护任务（cron 同款）
+  serve [--host --port]       本地 HTTP API（GUI / 远程客户端）
+
+存储后端由 CALLFANS_STORE 决定（memory|sqlite|neo4j）。
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+
+
+def _kb():
+    """惰性初始化（保持 --help 零开销）。"""
+    sys.path.insert(0, os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))))
+    from kb.factory import open_kb
+    from kb.tools import KBTools
+    store, queue = open_kb()
+    return store, queue, KBTools(store, queue)
+
+
+def _backend_name(store) -> str:
+    return type(store).__name__.replace("KnowledgeStore", "").lower() or "memory"
+
+
+# ---------------------------------------------------------------------------
+def cmd_status(args):
+    store, queue, tools = _kb()
+    from kb.maintenance import matrix_accounts
+    stats = store.stats()
+    accounts = matrix_accounts(store)
+    print(f"后端: {_backend_name(store)}")
+    print(f"图谱: {stats}")
+    print(f"矩阵账号: {len(accounts)}")
+    for acc in accounts[:10]:
+        try:
+            s = tools.get_account_state(acc)
+            print(f"  {acc}  风险={s.get('risk_level')}  "
+                  f"今日={s.get('today_action_counts') or '无'}")
+        except Exception as e:
+            print(f"  {acc}  (状态读取失败: {e})")
+
+
+def cmd_query(args):
+    store, queue, tools = _kb()
+    hits = tools.search_knowledge(args.text, k=args.k)
+    if not hits:
+        print("（无命中）")
+        return
+    for h in hits:
+        print(f"[{h['type']}] {h['node_id']}  score={h['score']}")
+        print(f"  {h['snippet'][:76]}")
+
+
+def cmd_memory(args):
+    store, queue, tools = _kb()
+    print(tools.memory_digest(args.account))
+
+
+def cmd_plan(args):
+    store, queue, tools = _kb()
+    from kb.executor import ExecutorAdapter
+    adapter = ExecutorAdapter(tools)
+    plan = adapter.plan(args.account, args.action, args.topic,
+                        job_id=args.job_id, task_params={})
+    if plan["status"] != "approved":
+        print(f"status: blocked（规则闸门）")
+        for v in plan["decision"].get("violations", []):
+            print(f"  [{v['rule']}] {v['message']}")
+        sys.exit(1)
+    spec = plan["spec"]
+    d = plan["decision"]
+    print(f"decision: {d['decision_id']}  fidelity={d.get('persona_fidelity_score')}")
+    print(f"标题: {spec['title']}")
+    print(f"正文: {spec['content']}")
+    print(f"action_id: {spec['action_id']}  （job_id 派生，回写幂等）")
+    print(f"知识依据: {spec['knowledge_refs']}")
+    print("\n执行命令（补设备参数后即可拉起）：")
+    print("  " + " ".join(adapter.build_command(spec, {
+        "appium_url": "<appium_url>", "deviceName": "<device>",
+        "systemPort": "<port>", "adbPort": "<adb>", "platformVersion": "<ver>"})))
+
+
+def cmd_serve(args):
+    sys.path.insert(0, os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))))
+    from kb.serve import run
+    run(host=args.host, port=args.port)
+
+
+# ---------------------------------------------------------------------------
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="kb", description="callfans 知识库统一 CLI")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    sub.add_parser("status", help="图谱/后端/账号概览").set_defaults(func=cmd_status)
+
+    p = sub.add_parser("query", help="知识检索")
+    p.add_argument("text", help="检索文本")
+    p.add_argument("--k", type=int, default=5)
+    p.set_defaults(func=cmd_query)
+
+    p = sub.add_parser("memory", help="人可读记忆摘要")
+    p.add_argument("account", help="账号 ID，如 acc:xiaohongshu:lily_beauty")
+    p.set_defaults(func=cmd_memory)
+
+    p = sub.add_parser("plan", help="决策 → 执行命令（dry run）")
+    p.add_argument("account")
+    p.add_argument("action", choices=["post", "comment", "like", "follow",
+                                      "browse"])
+    p.add_argument("topic", nargs="?", default=None)
+    p.add_argument("--job-id", default=None, help="调度平台任务 ID（幂等锚点）")
+    p.set_defaults(func=cmd_plan)
+
+    p = sub.add_parser("maintenance", help="维护任务（与 cron 同款）")
+    p.add_argument("level", choices=["daily", "weekly", "monthly", "yearly"])
+    p.add_argument("--llm", action="store_true")
+    p.set_defaults(func=_maintenance_main)
+
+    p = sub.add_parser("serve", help="本地 HTTP API")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--port", type=int, default=8765)
+    p.set_defaults(func=cmd_serve)
+
+    args = parser.parse_args(argv)
+    args.func(args)
+
+
+def _maintenance_main(args):
+    """委托 kb.maintenance 的 CLI（保持单一实现）。"""
+    sys.path.insert(0, os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))))
+    from kb.maintenance import _main
+    _main([args.level] + (["--llm"] if args.llm else []))
+
+
+if __name__ == "__main__":
+    main()

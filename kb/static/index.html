@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>callfans · 知识控制台</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #161a23; --panel2: #1c212e; --line: #262c3a;
+    --text: #e2e8f0; --muted: #94a3b8; --dim: #64748b;
+    --accent: #6366f1; --accent2: #818cf8;
+    --ok: #34d399; --warn: #fbbf24; --bad: #f87171;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text); height: 100vh; overflow: hidden;
+    font: 13px/1.6 -apple-system, "PingFang SC", "Segoe UI", sans-serif;
+    display: flex; flex-direction: column;
+  }
+  /* ---------- 顶栏 ---------- */
+  header {
+    display: flex; align-items: center; gap: 14px; padding: 10px 16px;
+    border-bottom: 1px solid var(--line); background: var(--panel);
+  }
+  .logo { font-weight: 700; letter-spacing: .5px; color: var(--accent2); }
+  .logo span { color: var(--dim); font-weight: 400; font-size: 11px; }
+  #cmd {
+    flex: 1; max-width: 640px; background: var(--panel2); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 12px; color: var(--text); font-size: 13px; outline: none;
+  }
+  #cmd:focus { border-color: var(--accent); }
+  .kbd { color: var(--dim); font-size: 11px; border: 1px solid var(--line);
+         border-radius: 4px; padding: 1px 5px; font-family: var(--mono); }
+  /* ---------- 主体三栏 ---------- */
+  main { flex: 1; display: flex; min-height: 0; }
+  aside { width: 250px; border-right: 1px solid var(--line);
+          overflow-y: auto; padding: 12px; background: var(--panel); }
+  #center { flex: 1; overflow-y: auto; padding: 20px 24px; }
+  #inspector { width: 320px; border-left: 1px solid var(--line);
+               overflow-y: auto; padding: 14px; background: var(--panel); }
+  h3.sec { font-size: 11px; color: var(--dim); text-transform: uppercase;
+           letter-spacing: 1px; margin: 14px 0 8px; }
+  /* ---------- 账号卡片 ---------- */
+  .acc {
+    display: flex; align-items: center; gap: 10px; padding: 9px 10px;
+    border-radius: 8px; cursor: pointer; border: 1px solid transparent;
+    margin-bottom: 4px;
+  }
+  .acc:hover { background: var(--panel2); }
+  .acc.active { background: var(--panel2); border-color: var(--accent); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .dot.low, .dot.ok { background: var(--ok); }
+  .dot.medium { background: var(--warn); } .dot.high { background: var(--bad); }
+  .acc .nm { font-weight: 600; }
+  .acc .sub { color: var(--dim); font-size: 11px; font-family: var(--mono);
+              overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* ---------- 通用卡片 ---------- */
+  .card { background: var(--panel); border: 1px solid var(--line);
+          border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+          gap: 12px; margin-bottom: 16px; }
+  .stat { background: var(--panel); border: 1px solid var(--line);
+          border-radius: 10px; padding: 12px 14px; }
+  .stat .v { font-size: 22px; font-weight: 700; }
+  .stat .l { color: var(--dim); font-size: 11px; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 20px;
+          font-size: 11px; border: 1px solid var(--line); color: var(--muted); }
+  .pill.accent { border-color: var(--accent); color: var(--accent2); }
+  /* ---------- Markdown 渲染 ---------- */
+  .md h1 { font-size: 16px; margin-bottom: 6px; }
+  .md h2 { font-size: 12px; color: var(--accent2); margin: 14px 0 6px;
+           text-transform: uppercase; letter-spacing: .5px; }
+  .md h3 { font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  .md ul { padding-left: 18px; } .md li { margin: 3px 0; color: var(--text); }
+  .md li.stale { color: var(--dim); text-decoration: line-through; }
+  .md li.ep { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+  .md .pin { color: var(--warn); }
+  /* ---------- 时间线 ---------- */
+  .tl { border-left: 2px solid var(--line); margin-left: 6px; padding-left: 16px; }
+  .tl .ep { position: relative; margin-bottom: 14px; }
+  .tl .ep::before { content: ""; position: absolute; left: -21px; top: 6px;
+                    width: 8px; height: 8px; border-radius: 50%;
+                    background: var(--accent); }
+  .tl .per { font-family: var(--mono); font-size: 11px; color: var(--accent2); }
+  .tl .nar { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  /* ---------- 检查器 ---------- */
+  .promise { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px;
+             background: var(--panel2); border-radius: 8px; margin-bottom: 6px;
+             border-left: 3px solid var(--warn); }
+  .promise input { margin-top: 4px; }
+  .note { padding: 7px 10px; border-radius: 6px; margin-bottom: 5px;
+          background: var(--panel2); font-size: 12px; }
+  .note .cat { font-size: 10px; color: var(--dim); font-family: var(--mono); }
+  .score { float: right; color: var(--dim); font-size: 10px; font-family: var(--mono); }
+  /* ---------- 底栏 ---------- */
+  footer { display: flex; gap: 18px; align-items: center; padding: 6px 16px;
+           border-top: 1px solid var(--line); background: var(--panel);
+           color: var(--dim); font-size: 11px; font-family: var(--mono); }
+  footer .sp { flex: 1; }
+  button.op { background: var(--panel2); color: var(--muted);
+              border: 1px solid var(--line); border-radius: 6px;
+              padding: 3px 10px; font-size: 11px; cursor: pointer; }
+  button.op:hover { color: var(--text); border-color: var(--accent); }
+  .search-hit { padding: 8px 12px; border: 1px solid var(--line);
+                border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
+  .search-hit:hover { border-color: var(--accent); }
+  .search-hit .t { color: var(--accent2); font-family: var(--mono); font-size: 11px; }
+  .empty { color: var(--dim); text-align: center; padding: 40px 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">callfans <span>知识控制台</span></div>
+  <input id="cmd" placeholder="问知识库任何事…（回车搜索；/daily /weekly /stats）">
+  <span class="kbd">⌘K</span>
+</header>
+<main>
+  <aside id="sidebar"></aside>
+  <div id="center"></div>
+  <div id="inspector"></div>
+</main>
+<footer>
+  <span id="ft-backend">—</span><span id="ft-stats">—</span>
+  <span class="sp"></span>
+  <button class="op" onclick="runMaintenance('daily')">跑日维护</button>
+  <button class="op" onclick="runMaintenance('weekly')">跑周维护</button>
+  <span id="ft-msg"></span>
+</footer>
+<script>
+const $ = (s) => document.querySelector(s);
+let current = null;
+
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g,
+  (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+/* ---------- 迷你 Markdown 渲染（memory_digest） ---------- */
+function md(text) {
+  const out = [];
+  for (const raw of text.split("\n")) {
+    const l = raw.trimEnd();
+    if (!l.trim()) continue;
+    if (l.startsWith("# ")) out.push(`<h1>${esc(l.slice(2))}</h1>`);
+    else if (l.startsWith("## ")) out.push(`<h2>${esc(l.slice(3))}</h2>`);
+    else if (l.startsWith("### ")) out.push(`<h3>${esc(l.slice(4))}</h3>`);
+    else if (l.startsWith("- [ ]")) out.push(`<li>☐ ${esc(l.slice(5))}</li>`);
+    else if (l.startsWith("- 📌")) out.push(`<li><span class="pin">📌</span>${esc(l.slice(3))}</li>`);
+    else if (l.startsWith("- ")) {
+      const stale = l.includes("（已过期）") ? " class='stale'" : "";
+      const isEp = l.includes("（ep:");
+      out.push(`<li${isEp ? " class='ep'" : stale}>${esc(l.slice(2))}</li>`);
+    }
+    else out.push(`<p>${esc(l)}</p>`);
+  }
+  return `<div class="md">${out.join("")}</div>`;
+}
+
+/* ---------- 数据加载 ---------- */
+async function api(path, body) {
+  const opt = body ? {method: "POST", headers: {"Content-Type": "application/json"},
+                      body: JSON.stringify(body)} : {};
+  const r = await fetch(path, opt);
+  return r.json();
+}
+
+async function loadFooter() {
+  const [h, s] = await Promise.all([api("/health"), api("/stats")]);
+  $("#ft-backend").textContent = `后端 ${h.backend}`;
+  $("#ft-stats").textContent =
+    `节点 ${s.nodes} · 边 ${s.edges}${s.events != null ? ` · 事件 ${s.events}` : ""}`;
+}
+
+async function loadSidebar() {
+  const data = await api("/accounts");
+  $("#sidebar").innerHTML = `<h3 class="sec">矩阵账号</h3>` +
+    data.accounts.map(a => `
+      <div class="acc ${current === a.account_id ? "active" : ""}"
+           onclick="selectAccount('${esc(a.account_id)}')">
+        <span class="dot ${a.risk_level || "low"}"></span>
+        <div style="min-width:0">
+          <div class="nm">${esc(a.name)}</div>
+          <div class="sub">${esc(a.account_id.split(":").pop())}
+            · 今日 ${Object.values(a.today_action_counts || {}).reduce((x, y) => x + y, 0)}</div>
+        </div>
+      </div>`).join("");
+}
+
+function overview() {
+  $("#center").innerHTML = `
+    <h1 style="margin-bottom:14px">概览</h1>
+    <div class="grid" id="ov"></div>
+    <div class="card">点击左侧账号查看记忆时间线；顶部命令框直接提问
+      （例如"防晒"），支持 <span class="pill accent">/stats</span>
+      <span class="pill accent">/daily</span> <span class="pill accent">/weekly</span></div>`;
+  api("/stats").then(s => {
+    $("#ov").innerHTML =
+      [["节点", s.nodes], ["边", s.edges],
+       ["事件", s.events ?? "—"], ["账号", document.querySelectorAll(".acc").length]]
+      .map(([l, v]) => `<div class="stat"><div class="v">${v}</div>
+                         <div class="l">${l}</div></div>`).join("");
+  });
+}
+
+async function selectAccount(id) {
+  current = id;
+  loadSidebar();
+  $("#center").innerHTML = `<div class="empty">加载中…</div>`;
+  const d = await api(`/account?account=${encodeURIComponent(id)}`);
+  const p = d.persona, st = d.state;
+  $("#center").innerHTML = `
+    <h1>${esc(p.name)} <span style="color:var(--dim);font-size:12px;
+        font-family:var(--mono)">${esc(id)}</span></h1>
+    <div style="margin:6px 0 16px">
+      <span class="pill">${esc(p.occupation || "")}</span>
+      <span class="pill">${esc(p.language_style || "")}</span>
+      <span class="pill accent">${esc(p.persona_id || "")}</span>
+    </div>
+    <div class="card">
+      <b>当前状态</b> — 风险 <span class="pill">${esc(st.risk_level || "low")}</span>
+      账龄 ${st.age_days} 天 · 冷却剩余 ${st.cooldown_remaining_h}h
+      · 今日 ${esc(JSON.stringify(st.today_action_counts || {}))}
+    </div>
+    <h3 class="sec">情景记忆时间线（周 / 月 / 年叙事）</h3>
+    <div class="tl">${d.episodes.length ? d.episodes.map(e => `
+      <div class="ep">
+        <div class="per">${esc(e.level)} · ${esc(e.period)}
+          ${e.drift ? `<span class="pill">漂移 ${(e.drift * 100).toFixed(0)}%</span>` : ""}</div>
+        <div class="nar">${esc((e.narrative || "").slice(0, 90))}…</div>
+      </div>`).join("") : '<div class="empty">（暂无 Episode，跑一次周维护生成）</div>'}
+    </div>
+    <h3 class="sec">记忆摘要</h3>
+    <div class="card">${md(d.digest)}</div>`;
+  renderInspector(d);
+}
+
+function renderInspector(d) {
+  $("#inspector").innerHTML = `
+    <h3 class="sec">未兑现承诺</h3>
+    ${d.promises.length ? d.promises.map(p => `
+      <div class="promise"><input type="checkbox">
+        <div><div>${esc(p.fact)}</div>
+        <div style="color:var(--dim);font-size:11px">${esc(p.note_id)}</div></div>
+      </div>`).join("") : '<div class="note" style="color:var(--dim)">（无待兑现承诺）</div>'}
+    <h3 class="sec">语义记忆（三因子召回 Top 5）</h3>
+    ${d.memories.length ? d.memories.map(m => `
+      <div class="note"><span class="score">${m.score}</span>
+        <span class="cat">[${esc(m.category)}${m.pinned ? " 📌" : ""}]</span>
+        ${esc(m.fact)}</div>`).join("") : '<div class="note" style="color:var(--dim)">（无）</div>'}
+    <h3 class="sec">情景索引（按 ID 下钻）</h3>
+    ${d.episodes.map(e => `<div class="note" style="font-family:var(--mono);
+        font-size:11px;color:var(--muted)">${esc(e.id)}</div>`).join("")
+      || '<div class="note" style="color:var(--dim)">（无）</div>'}`;
+}
+
+/* ---------- 命令框 ---------- */
+async function runCommand(v) {
+  const text = v.trim();
+  if (!text) return;
+  if (text === "/stats") return overview();
+  if (text === "/daily") return runMaintenance("daily");
+  if (text === "/weekly") return runMaintenance("weekly");
+  const hits = (await api(`/search?q=${encodeURIComponent(text)}`)).hits;
+  $("#center").innerHTML = `<h1 style="margin-bottom:14px">检索：${esc(text)}</h1>` +
+    (hits.length ? hits.map(h => `
+      <div class="search-hit" onclick="hitGo('${esc(h.node_id)}')">
+        <div class="t">[${esc(h.type)}] ${esc(h.node_id)} · score ${h.score}</div>
+        <div>${esc(h.snippet)}</div>
+      </div>`).join("") : '<div class="empty">（无命中）</div>');
+}
+
+function hitGo(nodeId) {
+  const acc = nodeId.startsWith("acc:") ? nodeId
+            : nodeId.startsWith("act:") || nodeId.startsWith("post:") ? current : null;
+  if (acc) selectAccount(acc);
+  else if (current) selectAccount(current);
+}
+
+async function runMaintenance(level) {
+  $("#ft-msg").textContent = `维护 ${level} 执行中…`;
+  const r = await api(`/maintenance/${level}`, {});
+  $("#ft-msg").textContent =
+    `维护 ${level} 完成：${JSON.stringify(r).slice(0, 80)}`;
+  loadFooter(); loadSidebar();
+  if (current) selectAccount(current);
+}
+
+/* ---------- 初始化 ---------- */
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+    e.preventDefault(); $("#cmd").focus(); $("#cmd").select();
+  }
+});
+$("#cmd").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { runCommand(e.target.value); e.target.value = ""; }
+});
+loadFooter(); loadSidebar(); overview();
+</script>
+</body>
+</html>
