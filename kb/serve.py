@@ -56,6 +56,46 @@ def make_handler(tools, queue, adapter):
                 if u.path == "/stats":
                     with lock:
                         return self._send(200, tools.store.stats())
+                if u.path == "/personas":
+                    with lock:
+                        out = []
+                        for pid in tools.store.node_ids("Persona"):
+                            n = tools.store.get_node(pid)
+                            accounts = [s for _, s, _
+                                        in tools.store.in_edges(pid, "HAS_PERSONA")]
+                            out.append({"persona_id": pid,
+                                        "props": n["props"] if n else {},
+                                        "accounts": accounts})
+                    return self._send(200, {"personas": out})
+                if u.path == "/topics":
+                    with lock:
+                        out = [{"topic_id": t,
+                                "label": tools.store.get_node(t)["props"].get("label")}
+                               for t in tools.store.node_ids("Topic")
+                               if tools.store.get_node(t)]
+                    return self._send(200, {"topics": out})
+                if u.path == "/rules":
+                    with lock:
+                        out = []
+                        for rid in tools.store.node_ids("Rule"):
+                            n = tools.store.get_node(rid)
+                            if n:
+                                out.append({"rule_id": rid, **n["props"]})
+                    return self._send(200, {"rules": out})
+                if u.path == "/decisions":
+                    with lock:
+                        acc = q.get("account")
+                        limit = int(q.get("limit", 20))
+                        if acc:
+                            items = tools.recent_decisions(acc, limit)
+                        else:              # 全账号合并决策流
+                            from kb.maintenance import matrix_accounts
+                            items = []
+                            for a in matrix_accounts(tools.store):
+                                items += tools.recent_decisions(a, limit)
+                            items.sort(key=lambda x: x.get("ts", 0), reverse=True)
+                            items = items[:limit]
+                    return self._send(200, {"decisions": items})
                 if u.path == "/accounts":
                     from kb.maintenance import matrix_accounts
                     with lock:
@@ -118,6 +158,35 @@ def make_handler(tools, queue, adapter):
             u = urlparse(self.path)
             try:
                 body = self._body()
+                if u.path == "/accounts":
+                    with lock:
+                        r = tools.create_account(
+                            platform=body["platform"], handle=body["handle"],
+                            name=body.get("name"),
+                            persona_id=body.get("persona_id"),
+                            persona_props=body.get("persona"),
+                            interests=body.get("interests"),
+                            device=body.get("device"))
+                    return self._send(200, r)
+                if u.path == "/accounts/import":
+                    with lock:
+                        results = []
+                        for a in body.get("accounts", []):
+                            try:
+                                results.append(tools.create_account(
+                                    platform=a["platform"], handle=a["handle"],
+                                    name=a.get("name"),
+                                    persona_id=a.get("persona_id"),
+                                    persona_props=a.get("persona"),
+                                    interests=a.get("interests"),
+                                    device=a.get("device")))
+                            except Exception as e:
+                                results.append({"error": str(e),
+                                                "handle": a.get("handle")})
+                    ok = sum(1 for r in results if r.get("created"))
+                    return self._send(200, {"imported": ok,
+                                            "total": len(results),
+                                            "results": results})
                 if u.path == "/decide":
                     with lock:
                         d = tools.decide(body["account_id"],

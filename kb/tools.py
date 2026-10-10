@@ -15,7 +15,7 @@ import uuid
 
 from .ingest import extract_events_from_result, platform_of
 from .rollup import open_promises, record_promise, stub_promise_scanner
-from .schema import topic_slug
+from .schema import make_event, topic_slug
 from .search import InvertedIndex, drill_down
 
 DAY = 86400.0
@@ -401,6 +401,91 @@ class KBTools:
         if not state.get("recent_actions"):
             lines.append("-（无）")
         return "\n".join(lines)
+
+    # ===============================================================
+    # 账号管理（手动添加 / 导入：把现有平台账号与设备纳入知识库）
+    # ===============================================================
+    def create_account(self, platform, handle, name=None, persona_id=None,
+                       persona_props=None, interests=None, device=None,
+                       status="warming", risk_level="low") -> dict:
+        """手动添加矩阵账号：Account + 人设（复用或新建）+ 兴趣树 + 设备属性。
+
+        - platform/handle → 账号 ID（acc:平台:handle，Schema 强校验）
+        - persona_id 已存在则复用（多人设共享）；否则按 persona_props 新建
+        - interests：话题 slug 列表（如 beauty.skincare），话题不存在则建
+        - device：云机设备参数（deviceName/adbPort/systemPort/appiumUrl…），
+          存为账号属性，执行层 build_command 可直接取用
+        """
+        import re
+        import time as _t
+        account_id = f"acc:{platform}:{handle}"
+        if self.store.has_node(account_id):
+            raise ValueError(f"账号已存在: {account_id}")
+        if persona_id and not self.store.has_node(persona_id):
+            raise ValueError(f"人设不存在: {persona_id}")
+        if persona_id is None:
+            pp = persona_props or {}
+            slug = re.sub(r"[^\w\-]+", "-", pp.get("name", handle)).strip("-").lower()
+            persona_id = f"per:{slug or handle}"
+
+        def ev(i, kind, payload):
+            return make_event(account_id, kind, payload,
+                              event_id=f"evt:acc:{account_id}:{i:02d}",
+                              ts=_t.time())
+
+        events = [ev(0, "upsert_node", {
+            "id": account_id, "type": "Account",
+            "props": {"name": name or handle, "status": status,
+                      "risk_level": risk_level, "created_at": _t.time(),
+                      **(device or {})}})]
+        if not self.store.has_node(persona_id):
+            events.append(ev(1, "upsert_node", {
+                "id": persona_id, "type": "Persona", "props": persona_props or {}}))
+        events.append(ev(2, "upsert_edge", {"src": account_id,
+                                             "type": "HAS_PERSONA", "dst": persona_id}))
+        i = 3
+        for slug in (interests or []):
+            topic_id = slug if slug.startswith("topic:") else f"topic:{slug}"
+            if not self.store.has_node(topic_id):
+                label = slug.rsplit(".", 1)[-1]
+                events.append(ev(i, "upsert_node", {
+                    "id": topic_id, "type": "Topic", "props": {"label": label}}))
+                i += 1
+            events.append(ev(i, "upsert_edge", {
+                "src": persona_id, "type": "INTERESTED_IN", "dst": topic_id}))
+            i += 1
+        for e in events:
+            self.queue.submit(e)
+        self.queue.drain()
+        return {"account_id": account_id, "persona_id": persona_id,
+                "created": True, "events": len(events)}
+
+    def recent_decisions(self, account_id, limit=20) -> list:
+        """决策流：近期行为 + DECIDED_VIA 引用的知识节点（可解释性视图）。"""
+        acts = []
+        for _, dst, _ in self.store.out_edges(account_id, "PERFORMED"):
+            n = self.store.get_node(dst)
+            if n and n["type"] == "ActionRecord":
+                acts.append({"id": dst, **n["props"]})
+        acts.sort(key=lambda a: a.get("ts", 0), reverse=True)
+        out = []
+        for a in acts[:limit]:
+            refs = []
+            for _, dst2, _ in self.store.out_edges(a["id"], "DECIDED_VIA"):
+                node = self.store.get_node(dst2)
+                if not node:
+                    continue
+                props = node["props"]
+                refs.append({"id": dst2, "type": node["type"],
+                             "label": props.get("label") or props.get("name")
+                                      or props.get("fact") or props.get("text")
+                                      or props.get("digest") or dst2})
+            out.append({"action_id": a["id"], "action": a.get("action"),
+                        "outcome": a.get("outcome"), "digest": a.get("digest"),
+                        "decision_id": a.get("decision_id"),
+                        "topic_id": a.get("topic_id"), "ts": a.get("ts"),
+                        "refs": refs})
+        return out
 
     # ===============================================================
     # 失真审计：决策可追溯性的事后检查

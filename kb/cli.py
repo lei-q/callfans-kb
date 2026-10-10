@@ -91,6 +91,46 @@ def cmd_plan(args):
         "systemPort": "<port>", "adbPort": "<adb>", "platformVersion": "<ver>"})))
 
 
+def cmd_account(args):
+    store, queue, tools = _kb()
+    if args.op == "list":
+        from kb.maintenance import matrix_accounts
+        for acc in matrix_accounts(store):
+            try:
+                s = tools.get_account_state(acc)
+                p = tools.get_persona(acc)
+                print(f"{acc}  {p.get('name', '')}  风险={s.get('risk_level')}  "
+                      f"设备={store.node_props(acc).get('deviceName', '未绑定')}")
+            except Exception as e:
+                print(f"{acc}  ({e})")
+        return
+    if args.op == "add":
+        device = dict(kv.split("=", 1) for kv in (args.device or []).split(",") if "=" in kv) \
+            if isinstance(args.device, str) else dict(args.device or [])
+        r = tools.create_account(
+            platform=args.platform, handle=args.handle, name=args.name,
+            persona_props={"name": args.persona_name or args.handle,
+                           "occupation": args.occupation or "",
+                           "language_style": args.style or "自然"},
+            interests=(args.interests.split(",") if args.interests else []),
+            device=device)
+        print(f"已创建: {r['account_id']}（人设 {r['persona_id']}）")
+        return
+    if args.op == "import":
+        import json
+        accounts = json.load(open(args.file))
+        if isinstance(accounts, dict):
+            accounts = accounts.get("accounts", [])
+        ok = 0
+        for a in accounts:
+            try:
+                tools.create_account(**a)
+                ok += 1
+            except Exception as e:
+                print(f"  跳过 {a.get('handle', '?')}: {e}")
+        print(f"导入完成: {ok}/{len(accounts)}")
+
+
 def cmd_serve(args):
     sys.path.insert(0, os.path.dirname(os.path.dirname(
         os.path.abspath(__file__))))
@@ -128,6 +168,19 @@ def main(argv=None):
     p.add_argument("topic", nargs="?", default=None)
     p.add_argument("--job-id", default=None, help="调度平台任务 ID（幂等锚点）")
     p.set_defaults(func=cmd_plan)
+
+    p = sub.add_parser("account", help="账号管理（手动添加/导入现有平台账号）")
+    p.add_argument("op", choices=["add", "list", "import"])
+    p.add_argument("--platform", help="平台（如 xiaohongshu）")
+    p.add_argument("--handle", help="账号 handle（如 lily_beauty）")
+    p.add_argument("--name", help="显示名")
+    p.add_argument("--persona-name", help="人设名")
+    p.add_argument("--occupation", help="人设职业（如 美妆博主）")
+    p.add_argument("--style", help="语言风格（如 幽默口语化）")
+    p.add_argument("--interests", help="兴趣话题 slug，逗号分隔（如 beauty.skincare,beauty.makeup）")
+    p.add_argument("--device", help="设备参数 k=v,k=v（deviceName=cp01,adbPort=5555）")
+    p.add_argument("--file", help="import：JSON 文件路径")
+    p.set_defaults(func=cmd_account)
 
     p = sub.add_parser("maintenance", help="维护任务（与 cron 同款）")
     p.add_argument("level", choices=["daily", "weekly", "monthly", "yearly"])

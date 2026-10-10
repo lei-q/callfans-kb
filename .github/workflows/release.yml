@@ -102,9 +102,98 @@ jobs:
           name: ${{ matrix.asset }}
           path: ${{ matrix.asset }}
 
+  desktop:
+    name: desktop (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            label: desktop-macos-arm64
+            py-arch: arm64
+            rust-target: aarch64-apple-darwin
+            asset: callfans-desktop-macos-arm64.dmg
+          - os: macos-latest          # Intel：Rosetta x64 Python + cargo 交叉
+            label: desktop-macos-x64
+            py-arch: x64
+            rust-target: x86_64-apple-darwin
+            asset: callfans-desktop-macos-x64.dmg
+          - os: windows-latest
+            label: desktop-windows
+            py-arch: x64
+            rust-target: x86_64-pc-windows-msvc
+            asset: callfans-desktop-windows-x64-setup.exe
+          - os: ubuntu-latest
+            label: desktop-linux
+            py-arch: x64
+            rust-target: x86_64-unknown-linux-gnu
+            asset: callfans-desktop-linux-x64.deb
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", architecture: "${{ matrix.py-arch }}" }
+
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: "${{ matrix.rust-target }}" }
+
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+
+      - name: Linux 系统依赖（webkit2gtk）
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential \
+            libssl-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Build sidecar (PyInstaller)
+        shell: bash
+        env:
+          PYTHONUTF8: "1"
+        run: |
+          pip install pyinstaller
+          SEP=":"; if [ "$RUNNER_OS" = "Windows" ]; then SEP=";"; fi
+          pyinstaller --onefile --name callfans --collect-submodules kb \
+            --add-data "kb/static${SEP}kb/static" --clean --noconfirm callfans.py
+          mkdir -p tauri-app/src-tauri/binaries
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cp dist/callfans.exe tauri-app/src-tauri/binaries/callfans.exe
+          else
+            cp dist/callfans tauri-app/src-tauri/binaries/callfans
+          fi
+
+      - name: Build desktop bundle (Tauri)
+        working-directory: tauri-app
+        run: |
+          npm install
+          npx tauri build --target ${{ matrix.rust-target }}
+
+      - name: Collect asset (macOS / Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        working-directory: tauri-app
+        run: |
+          cp "$(find src-tauri/target -name '*.dmg' -o -name '*.deb' | head -1)" \
+            "${{ github.workspace }}/${{ matrix.asset }}"
+
+      - name: Collect asset (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem src-tauri\target -Recurse -Filter '*setup.exe' | Select-Object -First 1
+          Copy-Item $exe.FullName "${{ github.workspace }}\${{ matrix.asset }}"
+        working-directory: tauri-app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+
   release:
     name: create release
-    needs: build
+    needs: [build, desktop]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -122,3 +211,7 @@ jobs:
             dist/callfans-macos-x64.zip
             dist/callfans-windows-x64.zip
             dist/callfans-linux-x64.tar.gz
+            dist/callfans-desktop-macos-arm64.dmg
+            dist/callfans-desktop-macos-x64.dmg
+            dist/callfans-desktop-windows-x64-setup.exe
+            dist/callfans-desktop-linux-x64.deb

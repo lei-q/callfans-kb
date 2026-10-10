@@ -9,6 +9,10 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# 桌面应用形态默认 SQLite 持久化（~/.callfans/callfans.db）；
+# 已显式设置环境变量时不覆盖。python -m kb CLI 不受影响（默认 memory）。
+os.environ.setdefault("CALLFANS_STORE", "sqlite")
+
 # 排障模式：CALLFANS_DEBUG=1 时 10 秒后自动打印卡住的调用栈并退出
 if os.environ.get("CALLFANS_DEBUG"):
     import faulthandler

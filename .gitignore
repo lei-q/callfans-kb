@@ -30,3 +30,9 @@ build/
 skills-lock.json
 dist/ build/ callfans.spec
 callfans.spec
+
+# Tauri 构建产物
+tauri-app/node_modules/
+tauri-app/src-tauri/target/
+tauri-app/src-tauri/binaries/
+tauri-app/src-tauri/gen/

@@ -6,294 +6,586 @@
 <title>callfans · 知识控制台</title>
 <style>
   :root {
-    --bg: #0f1117; --panel: #161a23; --panel2: #1c212e; --line: #262c3a;
-    --text: #e2e8f0; --muted: #94a3b8; --dim: #64748b;
-    --accent: #6366f1; --accent2: #818cf8;
+    --bg: #0f1117; --panel: #161a23; --panel2: #1c212e; --panel3: #222839;
+    --line: #262c3a; --text: #e2e8f0; --muted: #94a3b8; --dim: #64748b;
+    --accent: #6366f1; --accent2: #818cf8; --accent-dim: rgba(99,102,241,.15);
     --ok: #34d399; --warn: #fbbf24; --bad: #f87171;
-    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
   body {
-    background: var(--bg); color: var(--text); height: 100vh; overflow: hidden;
-    font: 13px/1.6 -apple-system, "PingFang SC", "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--text); overflow: hidden;
+    font: 13px/1.65 -apple-system, "PingFang SC", "Segoe UI", Inter, sans-serif;
     display: flex; flex-direction: column;
   }
-  /* ---------- 顶栏 ---------- */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  /* ============ 顶栏 ============ */
   header {
     display: flex; align-items: center; gap: 14px; padding: 10px 16px;
     border-bottom: 1px solid var(--line); background: var(--panel);
+    flex: none;
   }
-  .logo { font-weight: 700; letter-spacing: .5px; color: var(--accent2); }
+  .logo { font-weight: 700; letter-spacing: .5px; color: var(--accent2); white-space: nowrap; }
   .logo span { color: var(--dim); font-weight: 400; font-size: 11px; }
-  #cmd {
-    flex: 1; max-width: 640px; background: var(--panel2); border: 1px solid var(--line);
-    border-radius: 8px; padding: 7px 12px; color: var(--text); font-size: 13px; outline: none;
+  .cmdbar {
+    flex: 1; max-width: 620px; display: flex; align-items: center; gap: 8px;
+    background: var(--panel2); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 12px;
   }
-  #cmd:focus { border-color: var(--accent); }
+  .cmdbar:focus-within { border-color: var(--accent); }
+  .cmdbar .spark { color: var(--accent2); }
+  #cmd { flex: 1; background: none; border: none; color: var(--text);
+         font-size: 13px; outline: none; }
   .kbd { color: var(--dim); font-size: 11px; border: 1px solid var(--line);
-         border-radius: 4px; padding: 1px 5px; font-family: var(--mono); }
-  /* ---------- 主体三栏 ---------- */
+         border-radius: 4px; padding: 1px 5px; font-family: var(--mono); white-space: nowrap; }
+  .topops { margin-left: auto; display: flex; gap: 8px; }
+  button.op { background: var(--panel2); color: var(--muted);
+              border: 1px solid var(--line); border-radius: 6px;
+              padding: 4px 12px; font-size: 11.5px; cursor: pointer; }
+  button.op:hover { color: var(--text); border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #fff; border: none; }
+  button.primary:hover { background: var(--accent2); color: #fff; }
+
+  /* ============ 主体三栏 ============ */
   main { flex: 1; display: flex; min-height: 0; }
-  aside { width: 250px; border-right: 1px solid var(--line);
-          overflow-y: auto; padding: 12px; background: var(--panel); }
-  #center { flex: 1; overflow-y: auto; padding: 20px 24px; }
-  #inspector { width: 320px; border-left: 1px solid var(--line);
-               overflow-y: auto; padding: 14px; background: var(--panel); }
-  h3.sec { font-size: 11px; color: var(--dim); text-transform: uppercase;
-           letter-spacing: 1px; margin: 14px 0 8px; }
-  /* ---------- 账号卡片 ---------- */
+  aside {
+    width: 252px; border-right: 1px solid var(--line); overflow-y: auto;
+    padding: 10px 10px 20px; background: var(--panel); flex: none;
+  }
+  #center { flex: 1; overflow-y: auto; padding: 20px 26px 40px; min-width: 0; }
+  #inspector {
+    width: 316px; border-left: 1px solid var(--line); overflow-y: auto;
+    padding: 16px 14px 30px; background: var(--panel); flex: none;
+  }
+  h3.sec { font-size: 10.5px; color: var(--dim); text-transform: uppercase;
+           letter-spacing: 1.2px; margin: 16px 0 8px; display: flex;
+           align-items: center; justify-content: space-between; }
+  h3.sec:first-child { margin-top: 4px; }
+  h3.sec .cnt { font-family: var(--mono); letter-spacing: 0; }
+
+  /* 左栏导航 + 账号卡片墙 */
+  .nav { display: flex; align-items: center; gap: 9px; width: 100%;
+         padding: 7px 10px; border-radius: 7px; border: 1px solid transparent;
+         background: none; color: var(--muted); font-size: 12.5px; cursor: pointer;
+         text-align: left; margin-bottom: 2px; }
+  .nav:hover { background: var(--panel2); color: var(--text); }
+  .nav.active { background: var(--accent-dim); color: var(--accent2);
+                border-color: var(--accent); }
+  .nav svg { width: 15px; height: 15px; flex: none; }
+  .nav .badge { margin-left: auto; font-family: var(--mono); font-size: 10.5px;
+                color: var(--dim); }
   .acc {
     display: flex; align-items: center; gap: 10px; padding: 9px 10px;
     border-radius: 8px; cursor: pointer; border: 1px solid transparent;
-    margin-bottom: 4px;
+    margin-bottom: 4px; background: var(--panel2);
   }
-  .acc:hover { background: var(--panel2); }
-  .acc.active { background: var(--panel2); border-color: var(--accent); }
+  .acc:hover { border-color: var(--accent); }
+  .acc.active { border-color: var(--accent); background: var(--accent-dim); }
   .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-  .dot.low, .dot.ok { background: var(--ok); }
-  .dot.medium { background: var(--warn); } .dot.high { background: var(--bad); }
-  .acc .nm { font-weight: 600; }
-  .acc .sub { color: var(--dim); font-size: 11px; font-family: var(--mono);
+  .dot.low { background: var(--ok); } .dot.medium { background: var(--warn); }
+  .dot.high, .dot.banned { background: var(--bad); }
+  .acc .nm { font-weight: 600; font-size: 12.5px; }
+  .acc .sub { color: var(--dim); font-size: 10.5px; font-family: var(--mono);
               overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* ---------- 通用卡片 ---------- */
+
+  /* 通用卡片与统计 */
   .card { background: var(--panel); border: 1px solid var(--line);
           border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-          gap: 12px; margin-bottom: 16px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+           margin-bottom: 18px; }
   .stat { background: var(--panel); border: 1px solid var(--line);
           border-radius: 10px; padding: 12px 14px; }
-  .stat .v { font-size: 22px; font-weight: 700; }
-  .stat .l { color: var(--dim); font-size: 11px; }
-  .pill { display: inline-block; padding: 1px 8px; border-radius: 20px;
-          font-size: 11px; border: 1px solid var(--line); color: var(--muted); }
+  .stat .v { font-size: 21px; font-weight: 700; font-family: var(--mono); }
+  .stat .l { color: var(--dim); font-size: 10.5px; }
+  .pill { display: inline-block; padding: 1px 9px; border-radius: 20px;
+          font-size: 10.5px; border: 1px solid var(--line); color: var(--muted); }
   .pill.accent { border-color: var(--accent); color: var(--accent2); }
-  /* ---------- Markdown 渲染 ---------- */
-  .md h1 { font-size: 16px; margin-bottom: 6px; }
-  .md h2 { font-size: 12px; color: var(--accent2); margin: 14px 0 6px;
-           text-transform: uppercase; letter-spacing: .5px; }
-  .md h3 { font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
-  .md ul { padding-left: 18px; } .md li { margin: 3px 0; color: var(--text); }
-  .md li.stale { color: var(--dim); text-decoration: line-through; }
-  .md li.ep { color: var(--muted); font-size: 12px; font-family: var(--mono); }
-  .md .pin { color: var(--warn); }
-  /* ---------- 时间线 ---------- */
-  .tl { border-left: 2px solid var(--line); margin-left: 6px; padding-left: 16px; }
-  .tl .ep { position: relative; margin-bottom: 14px; }
-  .tl .ep::before { content: ""; position: absolute; left: -21px; top: 6px;
+  .pill.ok { border-color: var(--ok); color: var(--ok); }
+  .pill.bad { border-color: var(--bad); color: var(--bad); }
+
+  /* 中央：时间线 */
+  .tl { position: relative; border-left: 2px solid var(--line);
+        margin-left: 7px; padding-left: 18px; }
+  .tl .ep { position: relative; margin-bottom: 13px; }
+  .tl .ep::before { content: ""; position: absolute; left: -23px; top: 7px;
                     width: 8px; height: 8px; border-radius: 50%;
-                    background: var(--accent); }
-  .tl .per { font-family: var(--mono); font-size: 11px; color: var(--accent2); }
-  .tl .nar { color: var(--muted); font-size: 12px; margin-top: 2px; }
-  /* ---------- 检查器 ---------- */
+                    background: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+  .ep-card { background: var(--panel2); border: 1px solid var(--line);
+             border-radius: 9px; padding: 10px 13px; }
+  .ep-card .per { font-family: var(--mono); font-size: 11px; color: var(--accent2);
+                  display: flex; gap: 8px; align-items: center; }
+  .ep-card .nar { color: var(--muted); font-size: 12px; margin-top: 3px; }
+
+  /* 中央：决策流卡片（可展开依据） */
+  .dec { background: var(--panel2); border: 1px solid var(--line);
+         border-radius: 9px; padding: 11px 13px; margin-bottom: 10px; }
+  .dec .head { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .dec .act { font-weight: 600; }
+  .dec .dg { color: var(--dim); font-size: 11px; font-family: var(--mono); }
+  .dec .trace { display: none; margin-top: 9px; padding-top: 9px;
+                border-top: 1px dashed var(--line); }
+  .dec.open .trace { display: block; }
+  .dec .trace .tl2 { color: var(--dim); font-size: 10.5px;
+                     text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }
+  .ref { display: inline-flex; align-items: center; gap: 5px; font-size: 11px;
+         background: var(--panel3); border: 1px solid var(--line);
+         border-radius: 6px; padding: 2px 8px; margin: 0 5px 5px 0;
+         color: var(--muted); font-family: var(--mono); }
+  .ref.rule { border-color: rgba(251,191,36,.4); color: var(--warn); }
+  .ref.persona { border-color: rgba(99,102,241,.5); color: var(--accent2); }
+
+  /* 检查器 */
+  .insp-card { background: var(--panel2); border: 1px solid var(--line);
+               border-radius: 9px; padding: 12px 13px; margin-bottom: 10px; }
+  .insp-card .name { font-size: 15px; font-weight: 700; }
+  .kv { display: flex; justify-content: space-between; font-size: 11.5px;
+        padding: 2px 0; }
+  .kv .k { color: var(--dim); }
   .promise { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px;
              background: var(--panel2); border-radius: 8px; margin-bottom: 6px;
-             border-left: 3px solid var(--warn); }
-  .promise input { margin-top: 4px; }
-  .note { padding: 7px 10px; border-radius: 6px; margin-bottom: 5px;
-          background: var(--panel2); font-size: 12px; }
-  .note .cat { font-size: 10px; color: var(--dim); font-family: var(--mono); }
-  .score { float: right; color: var(--dim); font-size: 10px; font-family: var(--mono); }
-  /* ---------- 底栏 ---------- */
-  footer { display: flex; gap: 18px; align-items: center; padding: 6px 16px;
+             border-left: 3px solid var(--warn); font-size: 12px; }
+  .promise.fulfilled { border-left-color: var(--ok); opacity: .65;
+                       text-decoration: line-through; }
+  .budget-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+  .budget-row .bl { width: 52px; font-family: var(--mono); font-size: 10.5px;
+                    color: var(--dim); }
+  .meter { flex: 1; height: 6px; border-radius: 3px; background: var(--panel3);
+           overflow: hidden; }
+  .meter i { display: block; height: 100%; border-radius: 3px;
+             background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+  .budget-row .bv { width: 40px; text-align: right; font-family: var(--mono);
+                    font-size: 10.5px; color: var(--muted); }
+
+  /* 底栏 */
+  footer { display: flex; gap: 16px; align-items: center; padding: 6px 16px;
            border-top: 1px solid var(--line); background: var(--panel);
-           color: var(--dim); font-size: 11px; font-family: var(--mono); }
+           color: var(--dim); font-size: 11px; font-family: var(--mono); flex: none; }
+  footer .led { width: 7px; height: 7px; border-radius: 50%; display: inline-block;
+                margin-right: 5px; background: var(--ok); }
   footer .sp { flex: 1; }
-  button.op { background: var(--panel2); color: var(--muted);
-              border: 1px solid var(--line); border-radius: 6px;
-              padding: 3px 10px; font-size: 11px; cursor: pointer; }
-  button.op:hover { color: var(--text); border-color: var(--accent); }
-  .search-hit { padding: 8px 12px; border: 1px solid var(--line);
-                border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
+
+  /* 弹窗 */
+  .mask { position: fixed; inset: 0; background: rgba(5,8,15,.7);
+          display: none; align-items: center; justify-content: center; z-index: 50; }
+  .mask.show { display: flex; }
+  .modal { width: 520px; max-height: 84vh; overflow-y: auto; background: var(--panel);
+           border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; }
+  .modal h2 { font-size: 15px; margin-bottom: 4px; }
+  .modal .hint { color: var(--dim); font-size: 11.5px; margin-bottom: 14px; }
+  .frm { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+  .frm .full { grid-column: 1 / -1; }
+  label.fl { display: block; font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+  input.ft, select.ft {
+    width: 100%; background: var(--panel2); border: 1px solid var(--line);
+    border-radius: 7px; padding: 7px 10px; color: var(--text); font-size: 12.5px;
+    outline: none; }
+  input.ft:focus, select.ft:focus { border-color: var(--accent); }
+  .modal .btns { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+
+  /* 空状态 */
+  .empty-hero { text-align: center; padding: 70px 0 40px; }
+  .empty-hero .big { font-size: 42px; margin-bottom: 10px; }
+  .empty-hero h2 { font-size: 17px; margin-bottom: 8px; }
+  .empty-hero p { color: var(--dim); font-size: 12.5px; margin-bottom: 20px; }
+  .empty-hero code { background: var(--panel2); border: 1px solid var(--line);
+                     border-radius: 5px; padding: 1px 7px; font-family: var(--mono);
+                     font-size: 11px; color: var(--accent2); }
+
+  .search-hit { padding: 9px 13px; border: 1px solid var(--line); border-radius: 9px;
+                margin-bottom: 9px; cursor: pointer; background: var(--panel2); }
   .search-hit:hover { border-color: var(--accent); }
   .search-hit .t { color: var(--accent2); font-family: var(--mono); font-size: 11px; }
-  .empty { color: var(--dim); text-align: center; padding: 40px 0; }
+
+  table.list { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.list th { text-align: left; color: var(--dim); font-weight: 500;
+                  font-size: 10.5px; text-transform: uppercase; letter-spacing: .8px;
+                  padding: 6px 10px; border-bottom: 1px solid var(--line); }
+  table.list td { padding: 7px 10px; border-bottom: 1px solid var(--line); }
+  table.list tr:hover td { background: var(--panel2); }
+  .mono { font-family: var(--mono); font-size: 11px; color: var(--muted); }
 </style>
 </head>
 <body>
+
 <header>
-  <div class="logo">callfans <span>知识控制台</span></div>
-  <input id="cmd" placeholder="问知识库任何事…（回车搜索；/daily /weekly /stats）">
+  <div class="logo">✦ callfans <span>知识控制台</span></div>
+  <div class="cmdbar">
+    <span class="spark">✦</span>
+    <input id="cmd" placeholder="问知识库任何事…（回车检索；/stats /daily /weekly）">
+  </div>
   <span class="kbd">⌘K</span>
+  <div class="topops">
+    <button class="op primary" onclick="openAddAccount()">＋ 添加账号</button>
+    <button class="op" onclick="runMaintenance('daily')">日维护</button>
+    <button class="op" onclick="runMaintenance('weekly')">周维护</button>
+  </div>
 </header>
+
 <main>
   <aside id="sidebar"></aside>
   <div id="center"></div>
   <div id="inspector"></div>
 </main>
+
 <footer>
-  <span id="ft-backend">—</span><span id="ft-stats">—</span>
+  <span><span class="led" id="ft-led"></span><span id="ft-store">连接中…</span></span>
+  <span id="ft-stats">—</span>
+  <span>维护调度 03:00 daily · 周一 03:30 weekly</span>
   <span class="sp"></span>
-  <button class="op" onclick="runMaintenance('daily')">跑日维护</button>
-  <button class="op" onclick="runMaintenance('weekly')">跑周维护</button>
-  <span id="ft-msg"></span>
+  <span id="ft-msg">LLM 用量 —</span>
 </footer>
+
+<!-- 添加账号弹窗 -->
+<div class="mask" id="mask">
+  <div class="modal">
+    <h2>添加账号</h2>
+    <div class="hint">把现有平台的账号与云机设备纳入知识库。设备参数将存为账号属性，
+      执行层生成命令时直接取用。</div>
+    <div class="frm">
+      <div><label class="fl">平台 *</label>
+        <select class="ft" id="f-platform">
+          <option value="xiaohongshu">xiaohongshu（小红书）</option>
+          <option value="douyin">douyin（抖音）</option>
+          <option value="tiktok">tiktok</option>
+          <option value="weibo">weibo（微博）</option>
+        </select></div>
+      <div><label class="fl">账号 handle *</label>
+        <input class="ft" id="f-handle" placeholder="如 lily_beauty"></div>
+      <div><label class="fl">显示名</label>
+        <input class="ft" id="f-name" placeholder="如 小莉"></div>
+      <div><label class="fl">人设名</label>
+        <input class="ft" id="f-pname" placeholder="如 元气美妆酱"></div>
+      <div><label class="fl">人设职业</label>
+        <input class="ft" id="f-occupation" placeholder="如 美妆博主"></div>
+      <div><label class="fl">语言风格</label>
+        <input class="ft" id="f-style" placeholder="如 幽默口语化"></div>
+      <div class="full"><label class="fl">兴趣话题（slug，逗号分隔，不存在会自动创建）</label>
+        <input class="ft" id="f-interests" placeholder="如 beauty.skincare, beauty.makeup"></div>
+      <div><label class="fl">设备名</label>
+        <input class="ft" id="f-device" placeholder="如 cloudphone-042"></div>
+      <div><label class="fl">adb 端口</label>
+        <input class="ft" id="f-adb" placeholder="如 5555"></div>
+    </div>
+    <div class="btns">
+      <button class="op" onclick="closeAddAccount()">取消</button>
+      <button class="op primary" onclick="submitAccount()">创建账号</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const $ = (s) => document.querySelector(s);
-let current = null;
+let view = "accounts";          // accounts | personas | topics | rules | tasks | search
+let current = null;             // 当前选中账号
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g,
   (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmtTs = (ts) => ts ? new Date(ts * 1000).toLocaleString("zh-CN",
+  {month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit"}) : "—";
 
-/* ---------- 迷你 Markdown 渲染（memory_digest） ---------- */
-function md(text) {
-  const out = [];
-  for (const raw of text.split("\n")) {
-    const l = raw.trimEnd();
-    if (!l.trim()) continue;
-    if (l.startsWith("# ")) out.push(`<h1>${esc(l.slice(2))}</h1>`);
-    else if (l.startsWith("## ")) out.push(`<h2>${esc(l.slice(3))}</h2>`);
-    else if (l.startsWith("### ")) out.push(`<h3>${esc(l.slice(4))}</h3>`);
-    else if (l.startsWith("- [ ]")) out.push(`<li>☐ ${esc(l.slice(5))}</li>`);
-    else if (l.startsWith("- 📌")) out.push(`<li><span class="pin">📌</span>${esc(l.slice(3))}</li>`);
-    else if (l.startsWith("- ")) {
-      const stale = l.includes("（已过期）") ? " class='stale'" : "";
-      const isEp = l.includes("（ep:");
-      out.push(`<li${isEp ? " class='ep'" : stale}>${esc(l.slice(2))}</li>`);
-    }
-    else out.push(`<p>${esc(l)}</p>`);
-  }
-  return `<div class="md">${out.join("")}</div>`;
-}
-
-/* ---------- 数据加载 ---------- */
 async function api(path, body) {
   const opt = body ? {method: "POST", headers: {"Content-Type": "application/json"},
                       body: JSON.stringify(body)} : {};
   const r = await fetch(path, opt);
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error || r.status); }
   return r.json();
 }
 
-async function loadFooter() {
-  const [h, s] = await Promise.all([api("/health"), api("/stats")]);
-  $("#ft-backend").textContent = `后端 ${h.backend}`;
-  $("#ft-stats").textContent =
-    `节点 ${s.nodes} · 边 ${s.edges}${s.events != null ? ` · 事件 ${s.events}` : ""}`;
-}
+const ICONS = {
+  accounts: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.2 3.4-5 6.5-5s5.7 1.8 6.5 5"/><circle cx="17" cy="9" r="2.5"/><path d="M16 15.2c2.6.2 4.6 1.7 5.5 4.3"/></svg>',
+  personas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4"/><path d="M4 21c1-4 4.2-6 8-6s7 2 8 6"/></svg>',
+  topics: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9h16M4 15h16M10 3L8 21M16 3l-2 18"/></svg>',
+  rules: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>',
+  tasks: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
+};
 
+/* ================= 左栏 ================= */
 async function loadSidebar() {
-  const data = await api("/accounts");
-  $("#sidebar").innerHTML = `<h3 class="sec">矩阵账号</h3>` +
-    data.accounts.map(a => `
+  const [acc, personas, topics, rules] = await Promise.all([
+    api("/accounts"), api("/personas"), api("/topics"), api("/rules")]);
+  window._acc = acc.accounts;
+  const counts = {accounts: acc.accounts.length, personas: personas.personas.length,
+                  topics: topics.topics.length, rules: rules.rules.length,
+                  tasks: ""};
+  const nav = (v, label) => `
+    <button class="nav ${view === v ? "active" : ""}" onclick="go('${v}')">
+      ${ICONS[v]}<span>${label}</span><span class="badge">${counts[v]}</span></button>`;
+  let html = nav("accounts", "账号") + nav("personas", "人设") + nav("topics", "话题")
+           + nav("rules", "规则") + nav("tasks", "任务");
+  if (view === "accounts" || !view) {
+    html += `<h3 class="sec">矩阵账号<span class="cnt">${counts.accounts}</span></h3>`;
+    if (!acc.accounts.length) {
+      html += `<div style="color:var(--dim);font-size:11.5px;padding:8px 10px;
+        border:1px dashed var(--line);border-radius:8px;">
+        还没有账号。点击右上角 <b style="color:var(--accent2)">＋ 添加账号</b>，
+        把现有平台账号与设备纳入知识库。</div>`;
+    }
+    html += acc.accounts.map(a => `
       <div class="acc ${current === a.account_id ? "active" : ""}"
            onclick="selectAccount('${esc(a.account_id)}')">
         <span class="dot ${a.risk_level || "low"}"></span>
         <div style="min-width:0">
-          <div class="nm">${esc(a.name)}</div>
-          <div class="sub">${esc(a.account_id.split(":").pop())}
-            · 今日 ${Object.values(a.today_action_counts || {}).reduce((x, y) => x + y, 0)}</div>
+          <div class="nm">${esc(a.name || a.account_id.split(":").pop())}</div>
+          <div class="sub">${esc(a.account_id.split(":").pop())} ·
+            今日 ${Object.values(a.today_action_counts || {}).reduce((x, y) => x + y, 0)}</div>
         </div>
       </div>`).join("");
+  }
+  $("#sidebar").innerHTML = html;
 }
 
-function overview() {
+/* ================= 路由 ================= */
+function go(v) { view = v; current = null; loadSidebar(); render(); }
+
+async function render() {
+  if (view === "accounts") return current ? renderAccount() : renderOverview();
+  if (view === "personas") return renderList("人设", await api("/personas"), "personas");
+  if (view === "topics") return renderList("话题", await api("/topics"), "topics");
+  if (view === "rules") return renderList("规则", await api("/rules"), "rules");
+  if (view === "tasks") return renderTasks();
+}
+
+/* ================= 概览（无选中账号） ================= */
+async function renderOverview() {
+  const s = await api("/stats");
   $("#center").innerHTML = `
     <h1 style="margin-bottom:14px">概览</h1>
-    <div class="grid" id="ov"></div>
-    <div class="card">点击左侧账号查看记忆时间线；顶部命令框直接提问
-      （例如"防晒"），支持 <span class="pill accent">/stats</span>
-      <span class="pill accent">/daily</span> <span class="pill accent">/weekly</span></div>`;
-  api("/stats").then(s => {
-    $("#ov").innerHTML =
-      [["节点", s.nodes], ["边", s.edges],
-       ["事件", s.events ?? "—"], ["账号", document.querySelectorAll(".acc").length]]
-      .map(([l, v]) => `<div class="stat"><div class="v">${v}</div>
-                         <div class="l">${l}</div></div>`).join("");
+    <div class="grid4">
+      <div class="stat"><div class="v">${s.nodes}</div><div class="l">知识节点</div></div>
+      <div class="stat"><div class="v">${s.edges}</div><div class="l">关系边</div></div>
+      <div class="stat"><div class="v">${s.events ?? "—"}</div><div class="l">累计事件</div></div>
+      <div class="stat"><div class="v">${(window._acc || []).length}</div><div class="l">矩阵账号</div></div>
+    </div>
+    <div class="card">
+      ${(window._acc || []).length ? `点击左侧账号查看记忆时间线与决策流；
+        顶部命令框直接提问（如"防晒"）。` :
+      `<div class="empty-hero">
+         <div class="big">🌱</div>
+         <h2>知识库还是空的</h2>
+         <p>账号、人设、设备是知识库的入口。添加第一个账号开始：</p>
+         <button class="op primary" style="padding:8px 22px" onclick="openAddAccount()">＋ 添加账号</button>
+         <p style="margin-top:18px">也可以用 CLI 批量导入：
+           <code>kb account import accounts.json</code></p>
+       </div>`}
+    </div>`;
+  $("#inspector").innerHTML = "";
+}
+
+/* ================= 账号视图（时间线 + 决策流） ================= */
+async function renderAccount() {
+  const d = await api(`/account?account=${encodeURIComponent(current)}`);
+  const p = d.persona, st = d.state;
+  $("#center").innerHTML = `
+    <h1 style="margin-bottom:4px">${esc(p.name)}
+      <span class="mono">${esc(current)}</span></h1>
+    <div style="margin:6px 0 18px">
+      <span class="pill accent">${esc(p.persona_id || "")}</span>
+      <span class="pill">${esc(p.occupation || "")}</span>
+      <span class="pill">${esc(p.language_style || "")}</span>
+      <span class="pill">风险 ${esc(st.risk_level || "low")}</span>
+      <span class="pill">账龄 ${st.age_days} 天</span>
+      ${st.cooldown_remaining_h > 0 ? `<span class="pill bad">冷却 ${st.cooldown_remaining_h}h</span>` : ""}
+    </div>
+    <h3 class="sec" style="justify-content:flex-start">情景记忆时间线（周 / 月 / 年叙事）</h3>
+    ${d.episodes.length ? `<div class="tl">${d.episodes.map(e => `
+      <div class="ep"><div class="ep-card">
+        <div class="per">${esc(e.level)} · ${esc(e.period)}
+          ${e.drift ? `<span class="pill">漂移 ${(e.drift * 100).toFixed(0)}%</span>` : ""}</div>
+        <div class="nar">${esc((e.narrative || "").slice(0, 110))}</div>
+      </div></div>`).join("")}</div>`
+      : `<div class="card" style="color:var(--dim)">暂无 Episode——跑一次周维护生成周叙事。</div>`}
+    <h3 class="sec" style="justify-content:flex-start;margin-top:22px">决策流（点击展开依据）</h3>
+    <div id="decfeed">加载中…</div>`;
+  renderInspector(d);
+  api(`/decisions?account=${encodeURIComponent(current)}&limit=15`).then(r => {
+    $("#decfeed").innerHTML = r.decisions.length ? r.decisions.map(x => `
+      <div class="dec" id="dec-${esc(x.action_id)}">
+        <div class="head" onclick="this.parentElement.classList.toggle('open')">
+          <span class="pill ${x.outcome === "success" ? "ok" : "bad"}">${esc(x.action)}</span>
+          <span class="act">${esc((x.digest || "").slice(0, 40))}</span>
+          <span class="dg">${fmtTs(x.ts)}</span>
+          <span style="margin-left:auto;color:var(--dim)">依据 ${x.refs.length} ▾</span>
+        </div>
+        <div class="trace">
+          <div class="tl2">决策依据（DECIDED_VIA 溯源）</div>
+          ${x.decision_id ? `<div class="mono" style="margin-bottom:6px">${esc(x.decision_id)}</div>` : ""}
+          ${x.refs.map(ref => `
+            <span class="ref ${ref.type === "Rule" ? "rule" : ref.type === "Persona" ? "persona" : ""}">
+              ${ref.type === "Rule" ? "⚖" : ref.type === "Persona" ? "✦" : "◆"}
+              ${esc(ref.label)} <span style="opacity:.55">${esc(ref.id)}</span></span>`).join("")
+            || '<span class="mono">（无溯源记录）</span>'}
+        </div>
+      </div>`).join("") : `<div class="card" style="color:var(--dim)">暂无行为记录。</div>`;
   });
 }
 
-async function selectAccount(id) {
-  current = id;
-  loadSidebar();
-  $("#center").innerHTML = `<div class="empty">加载中…</div>`;
-  const d = await api(`/account?account=${encodeURIComponent(id)}`);
-  const p = d.persona, st = d.state;
-  $("#center").innerHTML = `
-    <h1>${esc(p.name)} <span style="color:var(--dim);font-size:12px;
-        font-family:var(--mono)">${esc(id)}</span></h1>
-    <div style="margin:6px 0 16px">
-      <span class="pill">${esc(p.occupation || "")}</span>
-      <span class="pill">${esc(p.language_style || "")}</span>
-      <span class="pill accent">${esc(p.persona_id || "")}</span>
-    </div>
-    <div class="card">
-      <b>当前状态</b> — 风险 <span class="pill">${esc(st.risk_level || "low")}</span>
-      账龄 ${st.age_days} 天 · 冷却剩余 ${st.cooldown_remaining_h}h
-      · 今日 ${esc(JSON.stringify(st.today_action_counts || {}))}
-    </div>
-    <h3 class="sec">情景记忆时间线（周 / 月 / 年叙事）</h3>
-    <div class="tl">${d.episodes.length ? d.episodes.map(e => `
-      <div class="ep">
-        <div class="per">${esc(e.level)} · ${esc(e.period)}
-          ${e.drift ? `<span class="pill">漂移 ${(e.drift * 100).toFixed(0)}%</span>` : ""}</div>
-        <div class="nar">${esc((e.narrative || "").slice(0, 90))}…</div>
-      </div>`).join("") : '<div class="empty">（暂无 Episode，跑一次周维护生成）</div>'}
-    </div>
-    <h3 class="sec">记忆摘要</h3>
-    <div class="card">${md(d.digest)}</div>`;
-  renderInspector(d);
-}
-
+/* ================= 检查器 ================= */
 function renderInspector(d) {
+  const p = d.persona, st = d.state;
+  const budgets = [["post", 3000], ["comment", 2000], ["follow", 1000],
+                   ["like", 800], ["browse", 600]];
   $("#inspector").innerHTML = `
+    <h3 class="sec">人设卡</h3>
+    <div class="insp-card">
+      <div class="name">${esc(p.name)}</div>
+      <div class="mono" style="margin-bottom:8px">${esc(p.persona_id || "")}</div>
+      <div class="kv"><span class="k">职业</span><span>${esc(p.occupation || "—")}</span></div>
+      <div class="kv"><span class="k">语言风格</span><span>${esc(p.language_style || "—")}</span></div>
+      <div class="kv"><span class="k">年龄带</span><span>${esc(p.age_band || "—")}</span></div>
+      <div class="kv"><span class="k">兴趣</span><span>${(p.interests || []).length} 项</span></div>
+    </div>
     <h3 class="sec">未兑现承诺</h3>
-    ${d.promises.length ? d.promises.map(p => `
+    ${d.promises.length ? d.promises.map(x => `
       <div class="promise"><input type="checkbox">
-        <div><div>${esc(p.fact)}</div>
-        <div style="color:var(--dim);font-size:11px">${esc(p.note_id)}</div></div>
-      </div>`).join("") : '<div class="note" style="color:var(--dim)">（无待兑现承诺）</div>'}
-    <h3 class="sec">语义记忆（三因子召回 Top 5）</h3>
-    ${d.memories.length ? d.memories.map(m => `
-      <div class="note"><span class="score">${m.score}</span>
-        <span class="cat">[${esc(m.category)}${m.pinned ? " 📌" : ""}]</span>
-        ${esc(m.fact)}</div>`).join("") : '<div class="note" style="color:var(--dim)">（无）</div>'}
-    <h3 class="sec">情景索引（按 ID 下钻）</h3>
-    ${d.episodes.map(e => `<div class="note" style="font-family:var(--mono);
-        font-size:11px;color:var(--muted)">${esc(e.id)}</div>`).join("")
-      || '<div class="note" style="color:var(--dim)">（无）</div>'}`;
+        <div>${esc(x.fact)}
+          <div class="mono">${esc(x.note_id)}</div></div></div>`).join("")
+      : `<div class="insp-card" style="color:var(--dim)">无待兑现承诺 ✓</div>`}
+    <h3 class="sec">上下文预算（按风险分级）</h3>
+    <div class="insp-card">
+      ${budgets.map(([a, v]) => `
+        <div class="budget-row"><span class="bl">${a}</span>
+          <div class="meter"><i style="width:${v / 3000 * 100}%"></i></div>
+          <span class="bv">${v}</span></div>`).join("")}
+    </div>
+    <h3 class="sec">近期行为</h3>
+    <div class="insp-card">
+      ${(st.recent_actions || []).length ? st.recent_actions.map(a => `
+        <div class="kv"><span class="k">${esc(a.action)}</span>
+          <span>${esc((a.digest || "").slice(0, 22))}</span></div>`).join("")
+        : '<span style="color:var(--dim)">（热区已归档）</span>'}
+    </div>`;
 }
 
-/* ---------- 命令框 ---------- */
+/* ================= 列表视图（人设/话题/规则） ================= */
+function renderList(title, data, kind) {
+  let html = `<h1 style="margin-bottom:14px">${title}</h1>`;
+  if (kind === "personas") {
+    html += `<table class="list"><tr><th>人设</th><th>ID</th><th>职业</th><th>账号</th></tr>` +
+      data.personas.map(x => `<tr>
+        <td><b>${esc(x.props.name || x.persona_id)}</b></td>
+        <td class="mono">${esc(x.persona_id)}</td>
+        <td>${esc(x.props.occupation || "—")}</td>
+        <td class="mono">${x.accounts.map(esc).join("<br>") || "—"}</td></tr>`).join("") + `</table>`;
+  } else if (kind === "topics") {
+    html += `<table class="list"><tr><th>话题</th><th>slug</th></tr>` +
+      data.topics.map(x => `<tr><td><b>${esc(x.label)}</b></td>
+        <td class="mono">${esc(x.topic_id)}</td></tr>`).join("") + `</table>`;
+  } else {
+    html += `<table class="list"><tr><th>规则</th><th>状态</th><th>说明</th></tr>` +
+      data.rules.map(x => `<tr>
+        <td><b>${esc(x.name || x.rule_id)}</b><div class="mono">${esc(x.rule_id)}</div></td>
+        <td>${x.status ? `<span class="pill ${x.status === "confirmed" ? "ok" : ""}">${esc(x.status)}</span>` : '<span class="pill ok">生效</span>'}</td>
+        <td style="color:var(--muted)">${esc((x.text || "").slice(0, 60))}</td></tr>`).join("") + `</table>`;
+  }
+  $("#center").innerHTML = html;
+  $("#inspector").innerHTML = "";
+}
+
+/* ================= 任务视图（维护调度） ================= */
+function renderTasks() {
+  $("#center").innerHTML = `
+    <h1 style="margin-bottom:14px">任务</h1>
+    <div class="card"><b>维护调度</b>
+      <div class="kv" style="margin-top:6px"><span class="k">daily（日摘要）</span><span>每天 03:00–04:00 错峰</span></div>
+      <div class="kv"><span class="k">weekly（周卷积 + 固化 + 淘汰）</span><span>每周一 03:30</span></div>
+      <div class="kv"><span class="k">monthly（月卷积）</span><span>每月 1 日 03:30</span></div>
+      <div class="kv"><span class="k">yearly（年度叙事）</span><span>每年 1 月 1 日</span></div>
+      <div style="margin-top:10px;color:var(--dim);font-size:11.5px">
+        cron 同款入口：<span class="mono">python3 -m kb maintenance daily</span></div>
+    </div>
+    <div class="card"><b>事件驱动任务（内嵌执行流程，无需调度）</b>
+      <div class="kv" style="margin-top:6px"><span class="k">承诺扫描</span><span>发布成功后自动（track_promises）</span></div>
+      <div class="kv"><span class="k">信号上报</span><span>执行器遇异常时（report_signal）</span></div>
+      <div class="kv"><span class="k">承诺兑现</span><span>兑现帖回写时（fulfill_promise）</span></div>
+    </div>`;
+  $("#inspector").innerHTML = "";
+}
+
+/* ================= 添加账号 ================= */
+function openAddAccount() { $("#mask").classList.add("show"); $("#f-handle").focus(); }
+function closeAddAccount() { $("#mask").classList.remove("show"); }
+
+async function submitAccount() {
+  const handle = $("#f-handle").value.trim();
+  if (!handle) return alert("请填写账号 handle");
+  const device = {};
+  if ($("#f-device").value.trim()) device.deviceName = $("#f-device").value.trim();
+  if ($("#f-adb").value.trim()) device.adbPort = $("#f-adb").value.trim();
+  try {
+    const r = await api("/accounts", {
+      platform: $("#f-platform").value, handle,
+      name: $("#f-name").value.trim() || null,
+      persona: {name: $("#f-pname").value.trim() || handle,
+                occupation: $("#f-occupation").value.trim() || "",
+                language_style: $("#f-style").value.trim() || "自然"},
+      interests: $("#f-interests").value.split(",").map(s => s.trim()).filter(Boolean),
+      device});
+    closeAddAccount();
+    ["f-handle", "f-name", "f-pname", "f-occupation", "f-style",
+     "f-interests", "f-device", "f-adb"].forEach(id => $("#" + id).value = "");
+    view = "accounts"; current = r.account_id;
+    await loadSidebar(); renderAccount();
+  } catch (e) { alert("创建失败：" + e.message); }
+}
+
+/* ================= 账号选择 / 命令框 ================= */
+async function selectAccount(id) {
+  view = "accounts"; current = id;
+  loadSidebar(); renderAccount();
+}
+
 async function runCommand(v) {
   const text = v.trim();
   if (!text) return;
-  if (text === "/stats") return overview();
+  if (text === "/stats") { go("accounts"); return; }
   if (text === "/daily") return runMaintenance("daily");
   if (text === "/weekly") return runMaintenance("weekly");
   const hits = (await api(`/search?q=${encodeURIComponent(text)}`)).hits;
+  view = "search";
   $("#center").innerHTML = `<h1 style="margin-bottom:14px">检索：${esc(text)}</h1>` +
     (hits.length ? hits.map(h => `
       <div class="search-hit" onclick="hitGo('${esc(h.node_id)}')">
         <div class="t">[${esc(h.type)}] ${esc(h.node_id)} · score ${h.score}</div>
-        <div>${esc(h.snippet)}</div>
-      </div>`).join("") : '<div class="empty">（无命中）</div>');
+        <div>${esc(h.snippet)}</div></div>`).join("") : '<div class="card" style="color:var(--dim)">无命中</div>');
 }
 
 function hitGo(nodeId) {
-  const acc = nodeId.startsWith("acc:") ? nodeId
-            : nodeId.startsWith("act:") || nodeId.startsWith("post:") ? current : null;
-  if (acc) selectAccount(acc);
-  else if (current) selectAccount(current);
+  if (nodeId.startsWith("acc:")) { selectAccount(nodeId); }
+  else if (current) { selectAccount(current); }
 }
 
 async function runMaintenance(level) {
   $("#ft-msg").textContent = `维护 ${level} 执行中…`;
   const r = await api(`/maintenance/${level}`, {});
-  $("#ft-msg").textContent =
-    `维护 ${level} 完成：${JSON.stringify(r).slice(0, 80)}`;
+  $("#ft-msg").textContent = `维护 ${level} 完成：账号 ${r.accounts} · ` +
+    `${level === "weekly" ? `Episode ${r.episodes} 固化 ${r.facts}` : `rolled ${r.rolled}`}`;
   loadFooter(); loadSidebar();
-  if (current) selectAccount(current);
+  if (current) renderAccount(); else render();
 }
 
-/* ---------- 初始化 ---------- */
+/* ================= 底栏 ================= */
+async function loadFooter() {
+  const [h, s] = await Promise.all([api("/health"), api("/stats")]);
+  $("#ft-store").textContent = h.backend;
+  $("#ft-stats").textContent = `节点 ${s.nodes} · 边 ${s.edges}` +
+    (s.events != null ? ` · 事件 ${s.events}` : "");
+}
+
 document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key === "k") {
     e.preventDefault(); $("#cmd").focus(); $("#cmd").select();
   }
+  if (e.key === "Escape") closeAddAccount();
 });
 $("#cmd").addEventListener("keydown", (e) => {
   if (e.key === "Enter") { runCommand(e.target.value); e.target.value = ""; }
 });
-loadFooter(); loadSidebar(); overview();
+
+loadFooter(); loadSidebar(); renderOverview();
 </script>
 </body>
 </html>

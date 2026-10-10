@@ -1,0 +1,34 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "callfans",
+  "version": "0.1.0",
+  "identifier": "com.callfans.kb",
+  "build": {
+    "frontendDist": "../ui-dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "callfans · 知识控制台",
+        "url": "http://127.0.0.1:8765/",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1080,
+        "minHeight": 680
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.icns",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "resources": {}
+  }
+}
