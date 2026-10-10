@@ -1,0 +1,29 @@
+version: "3.8"
+
+# Neo4j 持久化后端（kb/store_neo4j.py）
+# 启动：docker compose up -d
+# 访问：bolt://localhost:7687（驱动）/ http://localhost:7474（浏览器）
+# 环境变量：
+#   CALLFANS_STORE=neo4j
+#   CALLFANS_NEO4J_URI=bolt://localhost:7687
+#   CALLFANS_NEO4J_USER=neo4j
+#   CALLFANS_NEO4J_PASSWORD=callfans-dev
+
+services:
+  neo4j:
+    image: neo4j:5-community
+    container_name: callfans-neo4j
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: neo4j/callfans-dev
+      # 按本机资源收缩（Docker Desktop 默认 2GB 时也能跑）
+      NEO4J_server_memory_heap_initial__size: 256m
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_pagecache_size: 128m
+    volumes:
+      - callfans-neo4j-data:/data
+
+volumes:
+  callfans-neo4j-data:

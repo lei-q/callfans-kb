@@ -1,0 +1,15 @@
+[Unit]
+Description=callfans knowledge base (headless)
+After=network.target
+
+[Service]
+# 二进制安装路径（从 Release 包解压后放置）
+ExecStart=/usr/local/bin/callfans serve --host 0.0.0.0 --port 8765 --no-browser
+Environment=CALLFANS_STORE=sqlite
+Environment=CALLFANS_SQLITE_PATH=/var/lib/callfans/callfans.db
+StateDirectory=callfans
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

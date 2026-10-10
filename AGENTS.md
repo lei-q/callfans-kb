@@ -19,8 +19,9 @@ callfans 知识库 MVP：云手机社交矩阵的知识中枢（本体 Schema + 
 
 本目录是**改造工作区**，与 Proma 工作区（`/Users/lay/.proma/agent-workspaces/callfans-agent/workspace-files`）分工如下：
 
-- **已在本工程**：`kb/`（18 模块 / 5351 行，2026-10-10 从 Proma 工作区拷入，diff 与源一致）、`demo/`（回归验证套件）、`docs/`、`AGENTS.md`
-- **仍在 Proma 工作区**：`tauri-app/`（桌面壳，已编译，sidecar = `binaries/callfans`）、`callfans.py` + `callfans.spec`（PyInstaller 入口）、`docker-compose.yml`、`deploy/`、`.github/workflows/release.yml`、`README.md`、`LICENSE`、`.env.example`、`.agents/skills/`
+- **已在本工程**：`kb/`（18 模块 / 5351 行，2026-10-10 从 Proma 工作区拷入，diff 与源一致）、`demo/`（回归验证套件）、`docs/`、`AGENTS.md`、`README.md`、`LICENSE`（GPLv3）、`callfans.py`（PyInstaller 入口）、`deploy/callfans.service`、`docker-compose.yml`、`.env.example`、`.github/workflows/release.yml`（tag `v*` 触发四平台构建 + 自动 Release；desktop/Tauri job 待 `tauri-app/` 迁回后恢复）
+- **仍在 Proma 工作区**：`tauri-app/`（桌面壳，已编译，sidecar = `binaries/callfans`）、`callfans.spec`、`.agents/skills/`
+- **2026-10-10 修复**：`demo/run_memory_demo.py` 日期时间炸弹（兑现帖硬编码 `ts=2026-10-09 18:00`，+24h 后第 8 步断言永久失败）；改为 `day_ts` 锚定当前周 + 兑现帖 `ts=now`。教训记于 `docs/05 §5`（缺口 2 双时态的活例子）
 - **验证基线**：`kb/` + `demo/` 拷入后四个离线 demo 与 `python3 -m kb status` 已在本工程实机跑绿（具体数字见 `docs/05 §0.1`）。**改造期间任何一步之后这四个 demo 必须仍全绿**
 - **技术栈定案**：Python 内核 + TS 前端（`docs/05 §7.1`）。内核、记忆引擎、决策引擎、摄取、维护任务留在 Python；TS 只承担 GUI / MCP 门面。**TUI 不做**（`docs/05 §10.1`），操作面 = CLI + Web 控制台（`python3 -m kb serve`，Linux 无头部署 `--no-browser` + systemd）
 - **git**：本工程为独立 git 仓库（remote = github.com/lei-q/callfans-kb，2026-10-10 起以本工程为改造主线，旧历史已归档备份）

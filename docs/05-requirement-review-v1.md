@@ -316,6 +316,8 @@ Episode  经历层           已有（kb/rollup.py:179）
 | 5 | **无 DERIVED_FROM 边** | `kb/schema.py:39-53` 指向 MemoryNote 的只有 HAS_MEMORY / COMMITTED_IN / FULFILLED_BY | major | `audit_decision` 只能查图谱内部一致性，**查不出「摘要把 3000 说成了 30000」**，因为原始值不在图谱里也没有边指回去。与 `docs/03 §4.1`「永远有 source_uri 指回原始层」自相矛盾：派生链是断的 |
 | 6 | **承诺缺 due_at / 状态过少 / 豁免淘汰** | `kb/rollup.py:276` `status = "open" if promise else "stable"`；`docs/03 §1.4`「承诺有独立生命周期、pinned 永不淘汰」；`kb/tools.py:359` open_promises 置顶 | major | 「下周实测」没有截止时间 → 永不判逾期 → 永不 stale → **半年后决策上下文最贵的槽位堆满早已无意义的 open 承诺**，把真正相关的记忆挤出预算。缺 conditional / violated / expired / cancelled / renegotiated |
 
+> **2026-10-10 18:00 实测命中缺口 2**：`demo/run_memory_demo.py` 第 5 步兑现帖曾硬编码 `ts = 2026-10-09 18:00`，第 8 步断言依赖它落在 `get_account_state` 的滚动 24h 频控窗内——该日期 +24h 后断言**永久失败**（当天 17:2x 跑绿、18:19 跑红，源头工作区同样红）。这不是业务代码 bug，而是测试把「事实何时发生」（valid time）与「何时检查」（transaction time）混在同一个墙钟上——正是缺口 2 的活例子。已修：`day_ts` 锚定当前周（周一为第 1 天，周/月 key 随之派生）+ 兑现帖 `ts = now`，四个 demo 恢复全绿且跨日稳定。教训对内核同样成立：双时态不是学术洁癖，是「时间一过、断言/决策静默漂移」这类不可复现故障的唯一解。
+
 **补充两条非 blocker 但值得记下的：**
 
 - **指纹宽度**：`md5(fact)[:10]` = 40 bit，按生日界约 **120 万条 note 时碰撞概率接近 50%**，碰撞后果是两个不同事实被静默合并成同一节点且不报错。修法是一行常量（改 64 bit 以上 + 先做措辞归一化），所以不是 blocker，但**必须在能力 1 把量级推到百万之前改掉**。

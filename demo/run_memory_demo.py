@@ -9,7 +9,8 @@
 """
 import os
 import sys
-from datetime import datetime
+import time
+from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -24,11 +25,28 @@ from kb.tools import KBTools, RISK_BUDGETS                          # noqa: E402
 LILY = "acc:xiaohongshu:lily_beauty"
 KAI = "acc:xiaohongshu:kai_fit"
 TOPIC = "topic:beauty.skincare"
-WEEK = "2026W41"          # 2026-10-05（周一）~ 10-11
+
+# 锚定当前周（周一为一周第 1 天）：day_ts(1..7) → 本周一到周日。
+# 不硬编码日历日期，保证 24h 频控窗 / consolidate 30 天窗 / Episode 周期
+# 在任何日期运行都稳定（测试确定性；2026-10-10 硬编码版在 10-10 18:00 后永久红）。
+_MONDAY = datetime.combine(
+    datetime.now().date() - timedelta(days=datetime.now().weekday()),
+    datetime.min.time())
 
 
 def day_ts(d, hour=10):
-    return datetime(2026, 10, d, hour).timestamp()
+    """d=1..7 → 本周一到周日 hour 点。"""
+    return (_MONDAY + timedelta(days=d - 1, hours=hour)).timestamp()
+
+
+def _week_key(monday):
+    """ISO 周 key（YYYYWww），与 period_rollup 的周期 key 规范一致。"""
+    y, w, _ = monday.isocalendar()
+    return f"{y}W{w:02d}"
+
+
+WEEK = _week_key(_MONDAY)
+MONTH = _MONDAY.strftime("%Y%m")   # 月 key 按 ISO 周一归属月（与 _week_month 同规则）
 
 
 def h1(title):
@@ -44,11 +62,11 @@ def main():
     # -------------------------------------------------------------
     h1("1. 模拟一周运营：每天提交行为 + 周中一篇高赞帖 + 一次失败")
     week_plan = [
-        (5, [("browse", TOPIC), ("like", TOPIC)]),
-        (6, [("post", TOPIC)]),                       # 高赞防晒帖
-        (7, [("comment", TOPIC), ("browse", "topic:tech.ai")]),  # 期外话题 → 漂移
-        (8, [("like", TOPIC)]),
-        (9, [("post", TOPIC)]),                       # 失败帖
+        (1, [("browse", TOPIC), ("like", TOPIC)]),
+        (2, [("post", TOPIC)]),                       # 高赞防晒帖
+        (3, [("comment", TOPIC), ("browse", "topic:tech.ai")]),  # 期外话题 → 漂移
+        (4, [("like", TOPIC)]),
+        (5, [("post", TOPIC)]),                       # 失败帖
     ]
     for d, actions in week_plan:
         for i, (action, topic) in enumerate(actions):
@@ -59,12 +77,13 @@ def main():
                           else f"{action}@{topic}",
                 "new_post_id": f"post:xiaohongshu:mw{d}" if action == "post" else None,
                 "stats": {"views": 5200, "likes": 89, "comments": 12}
-                          if (action == "post" and d == 6) else {},
-                "outcome": "failed" if (action == "post" and d == 9) else "success",
+                          if (action == "post" and d == 2) else {},
+                "outcome": "failed" if (action == "post" and d == 5) else "success",
                 "ts": day_ts(d, 10 + i),
             })
-        ru = daily_rollup(store, LILY, day=f"202610{d:02d}")
-        print(f"  10-{d:02d}: 归档 {ru['archived_actions']} 个动作 "
+        day_key = (_MONDAY + timedelta(days=d - 1)).strftime("%Y%m%d")
+        ru = daily_rollup(store, LILY, day=day_key)
+        print(f"  {day_key}: 归档 {ru['archived_actions']} 个动作 "
               f"（{ru['compression']['raw_chars']}→{ru['compression']['summary_chars']} 字符）")
     assert not tools.get_account_state(LILY)["recent_actions"], "热区应已清空"
 
@@ -77,7 +96,7 @@ def main():
     assert 0 < wr["drift"] < 0.5, "期内有 1 个期外话题动作，漂移应为小正值"
 
     h1("3. 月卷积：周摘要 → 月叙事（层级下钻的地基）")
-    mr = period_rollup(store, LILY, level="month", period="202610")
+    mr = period_rollup(store, LILY, level="month", period=MONTH)
     print(f"  子周期数: {mr['children']}  Episode: {mr['episode_id']}")
 
     # -------------------------------------------------------------
@@ -88,7 +107,7 @@ def main():
                 "category": "fact", "confidence": 0.85, "pinned": True},
                {"fact": "答应粉丝下期讲刷酸（评论区高赞追问）",
                 "category": "promise", "confidence": 0.9,
-                "post_id": "post:xiaohongshu:mw6"}]
+                "post_id": "post:xiaohongshu:mw2"}]
         return out
 
     cm = consolidate_memory(store, LILY, extractor=demo_extractor, since_days=30)
@@ -109,25 +128,27 @@ def main():
     note_id = mem["open_promises"][0]["note_id"]
     tools.submit_result({
         "action_id": "act:mem-fulfill", "account_id": LILY, "action": "post",
-        "topic_id": TOPIC, "new_post_id": "post:xiaohongshu:mw9b",
-        "digest": "刷酸实测来了：答应你们的那期", "ts": day_ts(9, 18)})
-    fp = fulfill_promise(store, note_id, by_ref="post:xiaohongshu:mw9b")
+        "topic_id": TOPIC, "new_post_id": "post:xiaohongshu:mw5b",
+        # ts 用真实 now（不锚定周内某天）：第 8 步的 24h 频控窗依赖此帖在窗内，
+        # 硬编码日历日期会在该日期 +24h 后让断言永久失败（2026-10-10 18:00 实测）
+        "digest": "刷酸实测来了：答应你们的那期", "ts": time.time()})
+    fp = fulfill_promise(store, note_id, by_ref="post:xiaohongshu:mw5b")
     print(f"  兑现结果: {fp}")
     assert fp["changed"] and not open_promises(store, LILY)
-    assert store.get_edge(note_id, "FULFILLED_BY", "post:xiaohongshu:mw9b")
+    assert store.get_edge(note_id, "FULFILLED_BY", "post:xiaohongshu:mw5b")
 
     # -------------------------------------------------------------
     h1("5b. 生成内容埋坑追踪：正文里新埋的承诺自动入库（v2 缺口补齐）")
     content = ("姐妹们闭口终于瘪下去了！评论区蹲一波你们的刷酸翻车实录，"
                "下周实测平价妆前乳，人多我立马安排！")
-    tp = tools.track_promises(LILY, content, post_id="post:xiaohongshu:mw9b")
+    tp = tools.track_promises(LILY, content, post_id="post:xiaohongshu:mw5b")
     print(f"  扫描结果: {tp}")
     assert tp["promises_found"] == 1, "应识别出 1 条新承诺"
     pl = open_promises(store, LILY)
     assert len(pl) == 1 and "妆前乳" in pl[0]["fact"]
     print(f"  未兑现承诺: {pl[0]['fact']}")
     # 重复扫描不膨胀（指纹 ID）
-    tools.track_promises(LILY, content, post_id="post:xiaohongshu:mw9b")
+    tools.track_promises(LILY, content, post_id="post:xiaohongshu:mw5b")
     assert len(open_promises(store, LILY)) == 1
     print("  重复扫描: 未兑现承诺仍 1 条（指纹 ID 幂等）✓")
 
@@ -137,8 +158,8 @@ def main():
     for h in hits:
         print(f"  [{h['type']}] {h['node_id']}  score={h['score']}\n    {h['snippet'][:60]}")
     assert any("防晒" in h["snippet"] for h in hits), "应召回防晒相关记忆"
-    dd = drill_down(store, LILY, "month", "202610")
-    print(f"  下钻 202610 → {len(dd['children'])} 个子级摘要（周/日）")
+    dd = drill_down(store, LILY, "month", MONTH)
+    print(f"  下钻 {MONTH} → {len(dd['children'])} 个子级摘要（周/日）")
 
     # -------------------------------------------------------------
     h1("7. 公共记忆上卷：单账号信号=候选 → 双账号确证 → 灰度生效")
