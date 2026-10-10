@@ -18,15 +18,29 @@ from datetime import datetime
 from .schema import make_event, topic_slug
 
 
-def daily_rollup(store, account_id, day=None, summarizer=None) -> dict:
-    """把该账号当前未归档的行为流水压缩成日摘要。建议每天跑一次。"""
+def _subject_actions(store, owner, archived=None):
+    """主体（或账号 → 归一）全部账号句柄上的行为流水。archived 过滤可选。"""
+    subj = store.subject_of(owner)
+    acts = []
+    for acc in store.accounts_of(subj):
+        for _, dst, _ in store.out_edges(acc, "PERFORMED"):
+            n = store.get_node(dst)
+            if n and n["type"] == "ActionRecord":
+                if archived is None or n["props"].get("archived") == archived:
+                    acts.append((dst, n["props"]))
+    return acts
+
+
+def daily_rollup(store, owner, day=None, summarizer=None) -> dict:
+    """把该主体（各平台账号）当前未归档的行为流水压缩成日摘要。
+
+    owner 接受 Subject 或 Account（内部归一到 Subject）——摘要写在主体上，
+    同一数字生命跨平台的行为汇入同一天的叙事。建议每天跑一次。
+    """
+    subj = store.subject_of(owner)
     day = day or time.strftime("%Y%m%d")
 
-    acts = []
-    for _, dst, _ in store.out_edges(account_id, "PERFORMED"):
-        n = store.get_node(dst)
-        if n and n["type"] == "ActionRecord" and not n["props"].get("archived"):
-            acts.append((dst, n["props"]))
+    acts = [(aid, p) for aid, p in _subject_actions(store, subj, archived=False)]
 
     counts = {}
     for _, p in acts:
@@ -44,19 +58,19 @@ def daily_rollup(store, account_id, day=None, summarizer=None) -> dict:
             for _, p in acts[:10])
         summary = f"{day} 共执行 {len(acts)} 个动作：{detail}"
 
-    store.apply(make_event(account_id, "set_prop",
-                           {"id": account_id, "prop": f"summary_day:{day}",
+    store.apply(make_event(subj, "set_prop",
+                           {"id": subj, "prop": f"summary_day:{day}",
                             "value": summary}))
-    store.apply(make_event(account_id, "set_prop",
-                           {"id": account_id, "prop": f"summary_counts:{day}",
+    store.apply(make_event(subj, "set_prop",
+                           {"id": subj, "prop": f"summary_counts:{day}",
                             "value": counts}))
     for act_id, _ in acts:
-        store.apply(make_event(account_id, "set_prop",
+        store.apply(make_event(subj, "set_prop",
                                {"id": act_id, "prop": "archived", "value": True}))
 
     raw_chars = sum(len(str(p)) for _, p in acts)
-    return {"day": day, "archived_actions": len(acts), "counts": counts,
-            "summary": summary,
+    return {"day": day, "subject_id": subj, "archived_actions": len(acts),
+            "counts": counts, "summary": summary,
             "compression": {"raw_chars": raw_chars, "summary_chars": len(summary)}}
 
 # ===========================================================================
@@ -76,29 +90,27 @@ def _period_of(day_key: str, level: str) -> str:
     return d.strftime("%Y")
 
 
-def _account_slug(account_id: str) -> str:
-    """acc:xiaohongshu:lily_beauty → xiaohongshu.lily_beauty（Episode ID 片段）。"""
-    parts = account_id.split(":")
-    return ".".join(parts[1:]) if len(parts) > 1 else parts[0]
+def _subject_slug(subject_id: str) -> str:
+    """subj:lily_beauty → lily_beauty（Episode ID 片段，跨平台稳定）。"""
+    return subject_id.split(":", 1)[1] if ":" in subject_id else subject_id
 
 
-def _period_actions(store, account_id, day_keys):
-    """取属于这些天的 ActionRecord（含已归档），用于话题分布与漂移检查。"""
+def _period_actions(store, owner, day_keys):
+    """取属于这些天的 ActionRecord（含已归档，主体全部账号），用于漂移检查。"""
     lo = min(day_keys)
     hi = max(day_keys)
     lo_ts = datetime.strptime(lo, "%Y%m%d").timestamp()
     hi_ts = datetime.strptime(hi, "%Y%m%d").timestamp() + 86400
     out = []
-    for _, dst, _ in store.out_edges(account_id, "PERFORMED"):
-        n = store.get_node(dst)
-        if n and n["type"] == "ActionRecord" and lo_ts <= n["props"].get("ts", 0) < hi_ts:
-            out.append(n["props"])
+    for _, p in _subject_actions(store, owner):
+        if lo_ts <= p.get("ts", 0) < hi_ts:
+            out.append(p)
     return out
 
 
-def _drift_check(store, account_id, act_props):
+def _drift_check(store, owner, act_props):
     """人设漂移检查：期内动作话题分布 vs 人设兴趣重合度。返回 (漂移分, 明细)。"""
-    per_id = store.persona_id_of(account_id)
+    per_id = store.persona_id_of(store.subject_of(owner))
     interests = {topic_slug(d) for _, d, _ in store.out_edges(per_id, "INTERESTED_IN")}
     topics = [p.get("topic_id") for p in act_props if p.get("topic_id")]
     if not topics or not interests:
@@ -119,16 +131,18 @@ def _week_month(week_key: str) -> str:
     return datetime.fromisocalendar(int(y), int(w), 1).strftime("%Y%m")
 
 
-def period_rollup(store, account_id, level="week", period=None, summarizer=None) -> dict:
-    """把该账号某周期的子级摘要卷积成周期叙事（情景记忆）。
+def period_rollup(store, owner, level="week", period=None, summarizer=None) -> dict:
+    """把该主体某周期的子级摘要卷积成周期叙事（情景记忆）。
 
-    level=week 聚合 summary_day:*；month 聚合 summary_week:*；year 聚合
-    summary_month:*。产出：账号属性 summary_<level>:<period> + Episode 节点
-    （含漂移检查，人设漂移会在叙事中标记）。建议每周/每月定时跑。
+    owner 接受 Subject 或 Account（内部归一）。level=week 聚合 summary_day:*；
+    month 聚合 summary_week:*；year 聚合 summary_month:*。产出：主体属性
+    summary_<level>:<period> + Episode 节点（ID 用主体 slug，跨平台稳定，
+    含漂移检查）。建议每周/每月定时跑。
     """
     if level not in LEVEL_CHILD:
         raise ValueError(f"未知层级: {level}（可选 week/month/year）")
-    props = store.node_props(account_id)
+    subj = store.subject_of(owner)
+    props = store.node_props(subj)
     day_keys = sorted(k.split(":", 1)[1] for k in props
                       if k.startswith("summary_day:"))
 
@@ -156,8 +170,8 @@ def period_rollup(store, account_id, level="week", period=None, summarizer=None)
         return {"level": level, "period": period, "skipped": "no_child_summaries"}
 
     items = [(k.split(":", 1)[1], props[k]) for k in sorted(child_keys)]
-    act_props = _period_actions(store, account_id, days) if days else []
-    drift, drift_detail = _drift_check(store, account_id, act_props)
+    act_props = _period_actions(store, subj, days) if days else []
+    drift, drift_detail = _drift_check(store, subj, act_props)
 
     narrative = None
     if summarizer is not None:
@@ -173,18 +187,18 @@ def period_rollup(store, account_id, level="week", period=None, summarizer=None)
                      + "；".join(f"{p}: {s[:40]}" for p, s in items[:6])
                      + drift_note)
 
-    store.apply(make_event(account_id, "set_prop",
-                           {"id": account_id, "prop": f"summary_{level}:{period}",
+    store.apply(make_event(subj, "set_prop",
+                           {"id": subj, "prop": f"summary_{level}:{period}",
                             "value": narrative}))
-    ep_id = f"ep:{_account_slug(account_id)}.{period}"
-    store.apply(make_event(account_id, "upsert_node", {
+    ep_id = f"ep:{_subject_slug(subj)}.{period}"
+    store.apply(make_event(subj, "upsert_node", {
         "id": ep_id, "type": "Episode",
         "props": {"level": level, "period": period, "narrative": narrative,
                   "coverage": len(items), "drift": drift,
                   "drift_detail": drift_detail,
                   "confidence": 1.0 - drift * 0.5, "ts": time.time()}}))
-    store.apply(make_event(account_id, "upsert_edge",
-                           {"src": account_id, "type": "HAS_EPISODE", "dst": ep_id}))
+    store.apply(make_event(subj, "upsert_edge",
+                           {"src": subj, "type": "HAS_EPISODE", "dst": ep_id}))
 
     raw_chars = sum(len(s) for _, s in items)
     return {"level": level, "period": period, "children": len(items),
@@ -221,9 +235,35 @@ def _stub_extractor(ctx):
     return facts
 
 
-def consolidate_memory(store, account_id, extractor=None, since_days=7) -> dict:
-    """记忆固化 job：读近期情景记忆/帖子/失败记录 → 沉淀语义记忆。
+def _note_edge(state, pinned, confidence, ts):
+    """HAS_MEMORY 边的主观状态（方案 B：状态随主体走，节点只存客观 fact）。"""
+    return {"status": state, "pinned": bool(pinned),
+            "confidence": confidence, "ts": ts}
 
+
+def _write_note(store, subj, fact, category, pinned=False, confidence=0.7,
+                ts=None, post_id=None):
+    """写一条语义记忆：节点（fact/category，指纹幂等）+ 本主体的 HAS_MEMORY
+    边（主观状态）。同一事实被多主体共享节点、各持各的状态。返回 note_id。"""
+    ts = ts or time.time()
+    nid = note_id_of(fact)
+    store.apply(make_event(subj, "upsert_node", {
+        "id": nid, "type": "MemoryNote",
+        "props": {"fact": fact, "category": category}}))
+    state = "open" if category == "promise" else "stable"
+    store.apply(make_event(subj, "upsert_edge", {
+        "src": subj, "type": "HAS_MEMORY", "dst": nid,
+        "props": _note_edge(state, pinned, confidence, ts)}))
+    if category == "promise" and post_id:
+        store.apply(make_event(subj, "upsert_edge",
+                               {"src": nid, "type": "COMMITTED_IN", "dst": post_id}))
+    return nid
+
+
+def consolidate_memory(store, owner, extractor=None, since_days=7) -> dict:
+    """记忆固化 job：读主体近期情景记忆/帖子/失败记录 → 沉淀语义记忆。
+
+    owner 接受 Subject 或 Account（内部归一；跨平台账号的帖子/行为一并计入）。
     extractor(ctx) -> [{"fact", "category", "confidence", "pinned",
                         "topic_id"?, "post_id"?}] 可接 LLM；
     失败或未传时回退 _stub_extractor。建议每周跑一次。
@@ -231,33 +271,31 @@ def consolidate_memory(store, account_id, extractor=None, since_days=7) -> dict:
               promise（对粉丝的承诺，进入兑现追踪）
     """
     now = time.time()
-    props = store.node_props(account_id)
+    subj = store.subject_of(owner)
     episodes = []
-    for _, dst, _ in store.out_edges(account_id, "HAS_EPISODE"):
+    for _, dst, _ in store.out_edges(subj, "HAS_EPISODE"):
         n = store.get_node(dst)
         if n and now - n["props"].get("ts", 0) < since_days * 86400:
             episodes.append({"id": dst, **n["props"]})
 
     posts = []
-    for _, dst, _ in store.out_edges(account_id, "PUBLISHED"):
-        n = store.get_node(dst)
-        if n and now - n["props"].get("published_at", 0) < since_days * 86400:
-            posts.append(n["props"])
+    for acc in store.accounts_of(subj):
+        for _, dst, _ in store.out_edges(acc, "PUBLISHED"):
+            n = store.get_node(dst)
+            if n and now - n["props"].get("published_at", 0) < since_days * 86400:
+                posts.append(n["props"])
 
-    act_all = []
-    for _, dst, _ in store.out_edges(account_id, "PERFORMED"):
-        n = store.get_node(dst)
-        if n and now - n["props"].get("ts", 0) < since_days * 86400:
-            act_all.append(n["props"])
-    failures = [f"{p['action']}:{p.get('digest', '')}" for p in act_all
-                if p.get("outcome") == "failed"]
+    failures = [f"{p['action']}:{p.get('digest', '')}"
+                for _, p in _subject_actions(store, subj)
+                if p.get("outcome") == "failed"
+                and now - p.get("ts", 0) < since_days * 86400]
 
     drift_detail = {}
     for ep in episodes:
         if ep.get("drift_detail"):
             drift_detail = ep["drift_detail"]
             break
-    ctx = {"account_id": account_id, "episodes": episodes, "posts": posts,
+    ctx = {"subject_id": subj, "episodes": episodes, "posts": posts,
            "failures": failures, "drift_detail": drift_detail}
 
     try:
@@ -267,69 +305,69 @@ def consolidate_memory(store, account_id, extractor=None, since_days=7) -> dict:
 
     written = []
     for f in facts:
-        nid = note_id_of(f["fact"])
-        store.apply(make_event(account_id, "upsert_node", {
-            "id": nid, "type": "MemoryNote",
-            "props": {"fact": f["fact"], "category": f.get("category", "fact"),
-                      "confidence": f.get("confidence", 0.7),
-                      "pinned": bool(f.get("pinned")),
-                      "status": "open" if f.get("category") == "promise" else "stable",
-                      "ts": now}}))
-        store.apply(make_event(account_id, "upsert_edge",
-                               {"src": account_id, "type": "HAS_MEMORY", "dst": nid}))
-        if f.get("category") == "promise" and f.get("post_id"):
-            store.apply(make_event(account_id, "upsert_edge",
-                                   {"src": nid, "type": "COMMITTED_IN",
-                                    "dst": f["post_id"]}))
+        nid = _write_note(store, subj, f["fact"], f.get("category", "fact"),
+                          pinned=bool(f.get("pinned")),
+                          confidence=f.get("confidence", 0.7), ts=now,
+                          post_id=f.get("post_id"))
         written.append(nid)
     return {"facts": len(facts), "notes": written,
             "promises": sum(1 for f in facts if f.get("category") == "promise")}
 
 
-def open_promises(store, account_id) -> list:
-    """未兑现的承诺（决策上下文优先块：连续性的来源）。"""
-    out = []
-    for _, dst, _ in store.out_edges(account_id, "HAS_MEMORY"):
+def memory_edges(store, owner):
+    """主体的 (note_id, 边状态, 节点props) 三元组迭代器——读记忆的统一入口。"""
+    subj = store.subject_of(owner)
+    for _, dst, eprops in store.out_edges(subj, "HAS_MEMORY"):
         n = store.get_node(dst)
-        if n and n["props"].get("category") == "promise" \
-                and n["props"].get("status") == "open":
-            out.append({"note_id": dst, "fact": n["props"]["fact"],
-                        "ts": n["props"].get("ts")})
-    out.sort(key=lambda x: x["ts"])
+        if n:
+            yield subj, dst, (eprops or {}), n["props"]
+
+
+def open_promises(store, owner) -> list:
+    """未兑现的承诺（决策上下文优先块：连续性的来源）。
+
+    状态在 HAS_MEMORY 边上 → 每个主体独立（A 兑现不影响 B）。
+    """
+    out = []
+    for _, nid, e, p in memory_edges(store, owner):
+        if p.get("category") == "promise" and e.get("status") == "open":
+            out.append({"note_id": nid, "fact": p["fact"], "ts": e.get("ts")})
+    out.sort(key=lambda x: x["ts"] or 0)
     return out
 
 
-def fulfill_promise(store, note_id, by_ref) -> dict:
-    """兑现承诺：状态 closed + FULFILLED_BY 指向兑现它的行为/帖子。"""
+def fulfill_promise(store, note_id, owner, by_ref) -> dict:
+    """兑现承诺：该主体边上的状态 → fulfilled + FULFILLED_BY 指向兑现物。
+
+    owner 必须显式给出（Subject 或 Account）——修复了旧实现 `next(...)` 取
+    第一个归属者的跨主体串号 bug：状态在边上，天然按主体隔离。
+    """
+    subj = store.subject_of(owner)
     n = store.get_node(note_id)
     if n is None or n["type"] != "MemoryNote":
         raise KeyError(f"承诺节点不存在: {note_id}")
-    if n["props"].get("status") != "open":
-        return {"note_id": note_id, "status": n["props"]["status"], "changed": False}
-    account_id = next(s for s, _, _ in store.in_edges(note_id, "HAS_MEMORY"))
-    store.apply(make_event(account_id, "set_prop",
-                           {"id": note_id, "prop": "status", "value": "fulfilled"}))
-    store.apply(make_event(account_id, "upsert_edge",
+    e = store.get_edge(subj, "HAS_MEMORY", note_id)
+    if e is None:
+        raise KeyError(f"{subj} 不持有该记忆: {note_id}")
+    if e.get("status") != "open":
+        return {"note_id": note_id, "status": e["status"], "changed": False}
+    store.apply(make_event(subj, "upsert_edge", {
+        "src": subj, "type": "HAS_MEMORY", "dst": note_id,
+        "props": {"status": "fulfilled"}, "confidence": 1.0}))
+    store.apply(make_event(subj, "upsert_edge",
                            {"src": note_id, "type": "FULFILLED_BY", "dst": by_ref}))
-    return {"note_id": note_id, "status": "fulfilled", "changed": True, "by": by_ref}
+    return {"note_id": note_id, "status": "fulfilled", "changed": True,
+            "by": by_ref}
 
 
 # ===========================================================================
 # 承诺记录：生成内容中"埋的坑"也要追踪（v2 缺口补齐）
 # ===========================================================================
-def record_promise(store, account_id, fact, confidence=0.7, post_id=None) -> dict:
+def record_promise(store, owner, fact, confidence=0.7, post_id=None) -> dict:
     """把一条对粉丝的承诺写入记忆（指纹 ID 幂等，重复记录不膨胀）。"""
-    nid = note_id_of(fact)
-    store.apply(make_event(account_id, "upsert_node", {
-        "id": nid, "type": "MemoryNote",
-        "props": {"fact": fact, "category": "promise",
-                  "confidence": confidence, "pinned": False,
-                  "status": "open", "ts": time.time()}}))
-    store.apply(make_event(account_id, "upsert_edge",
-                           {"src": account_id, "type": "HAS_MEMORY", "dst": nid}))
-    if post_id:
-        store.apply(make_event(account_id, "upsert_edge",
-                               {"src": nid, "type": "COMMITTED_IN", "dst": post_id}))
+    subj = store.subject_of(owner)
+    nid = _write_note(store, subj, fact, "promise",
+                      confidence=confidence, post_id=post_id)
     return {"note_id": nid, "fact": fact}
 
 
@@ -361,26 +399,24 @@ def stub_promise_scanner(content):
 # ===========================================================================
 # 语义记忆时效淘汰（借鉴 Proma 的时效标注纪律）
 # ===========================================================================
-def expire_stale_notes(store, account_id, max_age_days=90, now=None) -> dict:
+def expire_stale_notes(store, owner, max_age_days=90, now=None) -> dict:
     """把过期的语义记忆标记为 stale（保留可追溯，但不再进入召回）。
 
-    淘汰条件：category ∈ {fact, lesson} 且 status=stable 且未 pin 且
-    超过 max_age_days 未更新。承诺(promise)有自己的生命周期，不参与。
-    pinned 里程碑永不淘汰。
+    淘汰是主体级语义（状态在 HAS_MEMORY 边上）：同一条事实对 A 过期
+    不代表对 B 过期。条件：category ∈ {fact, lesson} 且边状态 stable 且
+    未 pin 且超过 max_age_days 未更新。承诺(promise)有自己的生命周期，
+    不参与。pinned 里程碑永不淘汰。
     """
     now = now or time.time()
+    subj = store.subject_of(owner)
     expired = []
-    for _, dst, _ in store.out_edges(account_id, "HAS_MEMORY"):
-        n = store.get_node(dst)
-        if not n:
-            continue
-        p = n["props"]
+    for _, nid, e, p in memory_edges(store, subj):
         if (p.get("category") in ("fact", "lesson")
-                and p.get("status") == "stable"
-                and not p.get("pinned")
-                and now - p.get("ts", 0) > max_age_days * 86400):
-            store.apply(make_event(account_id, "set_prop",
-                                   {"id": dst, "prop": "status",
-                                    "value": "stale"}))
-            expired.append(dst)
+                and e.get("status") == "stable"
+                and not e.get("pinned")
+                and now - (e.get("ts") or 0) > max_age_days * 86400):
+            store.apply(make_event(subj, "upsert_edge", {
+                "src": subj, "type": "HAS_MEMORY", "dst": nid,
+                "props": {"status": "stale"}}))
+            expired.append(nid)
     return {"expired": len(expired), "notes": expired}

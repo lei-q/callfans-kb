@@ -149,10 +149,27 @@ class SQLiteKnowledgeStore:
                     (dst, etype)).fetchall()
         return [(r["type"], r["src"], json.loads(r["props"])) for r in rows]
 
-    def persona_id_of(self, account_id) -> str:
-        for _, dst, _ in self.out_edges(account_id, "HAS_PERSONA"):
+    def subject_of(self, node_id) -> str:
+        """记忆主体归一：Account → HAS_HANDLE 起点；Subject → 自身；
+        其余/无主体账号 → 自身（与内存后端语义一致，见 kb/store.py）。"""
+        n = self.get_node(node_id)
+        if n is None:
+            raise KeyError(f"节点不存在: {node_id}")
+        if n["type"] == "Subject":
+            return node_id
+        if n["type"] == "Account":
+            for _, src, _ in self.in_edges(node_id, "HAS_HANDLE"):
+                return src
+        return node_id
+
+    def persona_id_of(self, node_id) -> str:
+        subj = self.subject_of(node_id)
+        for _, dst, _ in self.out_edges(subj, "HAS_PERSONA"):
             return dst
-        raise KeyError(f"账号未绑定人设: {account_id}")
+        raise KeyError(f"主体未绑定人设: {node_id} → {subj}")
+
+    def accounts_of(self, subject_id) -> list:
+        return [d for _, d, _ in self.out_edges(subject_id, "HAS_HANDLE")]
 
     def stats(self) -> dict:
         with self._lock:

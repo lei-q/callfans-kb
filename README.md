@@ -30,6 +30,9 @@ python3 demo/run_sqlite_demo.py
 # API 契约测试（OpenAPI spec ↔ serve 实现，双向防漂移）
 python3 demo/run_api_contract_demo.py
 
+# 主体模型验收（跨平台不失忆 / 承诺主体隔离 / 状态在边）
+python3 demo/run_subject_demo.py
+
 # 统一 CLI（后端由 CALLFANS_STORE 决定：memory|sqlite|neo4j）
 python3 -m kb status
 python3 -m kb query "防晒"
@@ -98,7 +101,8 @@ Windows x64、Linux x64）：解压后 `./callfans` 无参数启动即打开 Web
 
 ```text
 ├── kb/                      # 核心代码（18 模块，零第三方依赖）
-│   ├── schema.py            #   节点/边/事件定义 + 校验（Schema 即过滤器）
+│   ├── schema.py            #   节点/边/事件定义 + 校验（Schema 即过滤器；
+│   │                        #   Subject=数字生命/记忆主体，Account=平台句柄）
 │   ├── store.py             #   内存图存储 + 分区写队列（幂等/仲裁/属性历史）
 │   ├── store_sqlite.py      #   SQLite 嵌入式后端（桌面单机：events 幂等 + 物化表）
 │   ├── store_neo4j.py       #   Neo4j 持久化后端（同接口，跨进程事件唯一约束去重）

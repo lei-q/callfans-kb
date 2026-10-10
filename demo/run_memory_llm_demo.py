@@ -117,7 +117,7 @@ def main():
             "action": "post", "topic_id": TOPIC,
             "new_post_id": "post:xiaohongshu:lp2",
             "digest": "刷酸实测：答应粉丝的专题来了", "ts": day_ts(9, 18)})
-        fp = fulfill_promise(store, promises[0]["note_id"],
+        fp = fulfill_promise(store, promises[0]["note_id"], LILY,
                              by_ref="post:xiaohongshu:lp2")
         print(f"  兑现: {fp}")
         print(f"  剩余未兑现: {len(open_promises(store, LILY))} 条")

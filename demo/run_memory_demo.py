@@ -112,9 +112,11 @@ def main():
 
     cm = consolidate_memory(store, LILY, extractor=demo_extractor, since_days=30)
     print(f"  固化事实: {cm['facts']} 条（含承诺 {cm['promises']} 条）")
+    subj = store.subject_of(LILY)
     for nid in cm["notes"]:
         p = store.node_props(nid)
-        print(f"  {nid} [{p['category']}/{p['status']}] {p['fact'][:36]}")
+        e = store.get_edge(subj, "HAS_MEMORY", nid) or {}
+        print(f"  {nid} [{p['category']}/{e.get('status')}] {p['fact'][:36]}")
 
     # -------------------------------------------------------------
     h1("5. 承诺闭环：决策上下文置顶未兑现承诺 → 发兑现帖 → FULFILLED_BY")
@@ -132,7 +134,7 @@ def main():
         # ts 用真实 now（不锚定周内某天）：第 8 步的 24h 频控窗依赖此帖在窗内，
         # 硬编码日历日期会在该日期 +24h 后让断言永久失败（2026-10-10 18:00 实测）
         "digest": "刷酸实测来了：答应你们的那期", "ts": time.time()})
-    fp = fulfill_promise(store, note_id, by_ref="post:xiaohongshu:mw5b")
+    fp = fulfill_promise(store, note_id, LILY, by_ref="post:xiaohongshu:mw5b")
     print(f"  兑现结果: {fp}")
     assert fp["changed"] and not open_promises(store, LILY)
     assert store.get_edge(note_id, "FULFILLED_BY", "post:xiaohongshu:mw5b")

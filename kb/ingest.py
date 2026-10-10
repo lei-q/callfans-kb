@@ -17,19 +17,23 @@ def platform_of(account_id: str) -> str:
     return account_id.split(":")[1]
 
 
-def extract_events_from_result(result: dict, llm=None) -> list:
+def extract_events_from_result(result: dict, llm=None, store=None) -> list:
     """执行结果 → 事件列表。
 
     result 字段：
       account_id*  action*  (post_id=新帖ID  target_account  topic_id
        digest  outcome  stats  decision_id  knowledge_refs  ts  source  action_id)
     llm(result) -> [{"kind": ..., "payload": ...}] 可选钩子，候选事实必须过 schema。
+    store：llm 钩子启用时必须提供（记忆归属边 HAS_MEMORY 从记忆主体 Subject
+    出发，需要 store 做 account→subject 归一；主观状态写在边上）。
     """
     aid = result["account_id"]
     action = result["action"]
     ts = float(result.get("ts", time.time()))
     src = result.get("source", "executor")
     base = result.get("action_id") or new_action_id()
+    if llm is not None and store is None:
+        raise ValueError("llm 钩子启用时必须传 store（记忆归属需归一到 Subject）")
     events = []
 
     def ev(i, kind, payload):
@@ -101,27 +105,31 @@ def extract_events_from_result(result: dict, llm=None) -> list:
         # MemoryNote 候选归一化：ID 换成事实指纹（note_id_of），
         # LLM 发明的 ID 只是临时引用；引用它的边同步重映射。
         # 效果：同一承诺重复抽取 → 同一节点；措辞不合规的 ID 也能入库。
+        # 节点只保留客观字段（fact/category）；主观状态在 HAS_MEMORY 边上。
         remap = {}
+        edge_state = {}          # canonical -> 主观状态（边上）
         for cand in candidates:
             if not isinstance(cand, dict):
                 continue
             p = cand.get("payload", {})
             if cand.get("kind") == "upsert_node" \
                     and p.get("type") == "MemoryNote":
-                fact = (p.get("props") or {}).get("fact")
+                old_props = p.get("props") or {}
+                fact = old_props.get("fact")
                 if isinstance(fact, str) and fact.strip():
                     canonical = note_id_of(fact)
                     remap[p.get("id")] = canonical
                     p["id"] = canonical
-                    cat = (p.get("props") or {}).get("category")
+                    cat = old_props.get("category")
                     if cat not in ("fact", "lesson", "milestone", "promise"):
-                        p["props"]["category"] = "fact"
-                    p["props"].setdefault(
-                        "status", "open" if cat == "promise" else "stable")
-                    # 结构性字段由系统保证，不依赖 LLM 自觉
-                    p["props"].setdefault("ts", ts)
-                    p["props"].setdefault("pinned", False)
-                    p["props"].setdefault("confidence", 0.7)
+                        cat = "fact"
+                    p["props"] = {"fact": fact, "category": cat}
+                    # 结构性字段由系统保证，不依赖 LLM 自觉（写在归属边上）
+                    edge_state[canonical] = {
+                        "status": "open" if cat == "promise" else "stable",
+                        "pinned": bool(old_props.get("pinned")),
+                        "confidence": old_props.get("confidence", 0.7),
+                        "ts": ts}
         norm = []
         auto_link = []          # 自动补的 HAS_MEMORY 边（确定性，不依赖 LLM）
         for cand in candidates:
@@ -139,12 +147,14 @@ def extract_events_from_result(result: dict, llm=None) -> list:
                     p["dst"] = remap[p["dst"]]
             norm.append(cand)
         candidates = norm
-        # 从本账号结果中抽取的记忆自动归属本账号（HAS_MEMORY），
- # 事件 ID 确定性派生 → 同一结果重提不重复
+        # 从本结果抽取的记忆自动归属执行账号的记忆主体（Subject -HAS_MEMORY->
+        # note，主观状态在边上）；事件 ID 确定性派生 → 同一结果重提不重复
+        subj = store.subject_of(aid)
         for canonical in sorted(set(remap.values())):
             auto_link.append({"kind": "upsert_edge",
-                              "payload": {"src": aid, "type": "HAS_MEMORY",
-                                          "dst": canonical},
+                              "payload": {"src": subj, "type": "HAS_MEMORY",
+                                          "dst": canonical,
+                                          "props": edge_state.get(canonical, {})},
                               "event_id": f"{base}:mm:{canonical}"})
         for cand in candidates:
             try:

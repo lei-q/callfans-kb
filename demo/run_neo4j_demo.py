@@ -92,7 +92,7 @@ def main():
     print(f"日 rollup 归档 {ru['archived_actions']} 动作；周 Episode {wr['episode_id']}；固化 {cm['facts']} 条")
     promises = open_promises(store, LILY)
     assert promises, "承诺应已入库"
-    fp = fulfill_promise(store, promises[0]["note_id"], by_ref="post:xiaohongshu:n1")
+    fp = fulfill_promise(store, promises[0]["note_id"], LILY, by_ref="post:xiaohongshu:n1")
     print(f"兑现: {fp['status']}  剩余未兑现 {len(open_promises(store, LILY))}")
 
     # -------------------------------------------------------------

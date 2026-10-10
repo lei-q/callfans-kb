@@ -123,16 +123,18 @@ def make_handler(tools, queue, adapter):
                     with lock:
                         acc = q["account"]
                         from kb.rollup import open_promises
+                        subj = tools.store.subject_of(acc)
                         episodes = []
-                        for _, dst, _ in tools.store.out_edges(acc, "HAS_EPISODE"):
+                        for _, dst, _ in tools.store.out_edges(subj, "HAS_EPISODE"):
                             n = tools.store.get_node(dst)
                             if n:
                                 episodes.append({"id": dst, **n["props"]})
                         episodes.sort(key=lambda x: x.get("ts", 0), reverse=True)
                         return self._send(200, {
+                            "subject_id": subj,
                             "persona": tools.get_persona(acc),
                             "state": tools.get_account_state(acc),
-                            "promises": open_promises(tools.store, acc),
+                            "promises": open_promises(tools.store, subj),
                             "memories": tools.recall_memory(
                                 acc, q.get("q", ""))["memories"],
                             "episodes": episodes,
@@ -177,7 +179,8 @@ def make_handler(tools, queue, adapter):
                             persona_id=body.get("persona_id"),
                             persona_props=body.get("persona"),
                             interests=body.get("interests"),
-                            device=body.get("device"))
+                            device=body.get("device"),
+                            subject_id=body.get("subject_id"))
                     return self._send(200, r)
                 if u.path == "/accounts/import":
                     with lock:
@@ -190,7 +193,8 @@ def make_handler(tools, queue, adapter):
                                     persona_id=a.get("persona_id"),
                                     persona_props=a.get("persona"),
                                     interests=a.get("interests"),
-                                    device=a.get("device")))
+                                    device=a.get("device"),
+                                    subject_id=a.get("subject_id")))
                             except Exception as e:
                                 # 非法项（含非 dict）归入 error 项，不中断批量导入
                                 results.append({"error": str(e),

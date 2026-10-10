@@ -61,7 +61,10 @@ class KBTools:
         counts = {}
         for a in today:
             counts[a["props"]["action"]] = counts.get(a["props"]["action"], 0) + 1
-        summaries = {k: v for k, v in props.items() if k.startswith("summary_day:")}
+        # 日摘要在记忆主体上（同一数字生命跨平台汇入同一天叙事）
+        subj = self.store.subject_of(account_id)
+        mem_props = self.store.node_props(subj) if subj != account_id else props
+        summaries = {k: v for k, v in mem_props.items() if k.startswith("summary_day:")}
         return {
             "account_id": account_id,
             "status": props.get("status"),
@@ -136,38 +139,43 @@ class KBTools:
     def recall_memory(self, account_id, query, limit=5) -> dict:
         """记忆召回（决策上下文 memory 块）：
         relevance × recency × importance 三因子排序，未兑现承诺优先置顶。
+        记忆归属记忆主体（Subject）——同一数字生命的任一平台账号都能召回全部记忆。
         """
         now = time.time()
+        subj = self.store.subject_of(account_id)
         qg = set(query) if query else set()
         scored = []
-        for _, dst, _ in self.store.out_edges(account_id, "HAS_MEMORY"):
-            n = self.store.get_node(dst)
+        for _, nid, e in self.store.out_edges(subj, "HAS_MEMORY"):
+            n = self.store.get_node(nid)
             if not n:
                 continue
-            p = n["props"]
+            p = n["props"]                  # 客观：fact/category
+            e = e or {}                     # 主观：status/pinned/confidence/ts
             if p.get("category") == "promise":
                 continue                    # 承诺单独置顶，不参与排序
-            if p.get("status") == "stale":
+            if e.get("status") == "stale":
                 continue                    # 时效淘汰：不再进入召回（docs/03 §1.4）
             grams = {p["fact"][i:i + 2] for i in range(len(p["fact"]) - 1)} \
                 if p.get("fact") else set()
             relevance = (len(grams & qg) / len(qg)) if qg and grams else 0.0
-            recency = 2.718 ** (-(now - p.get("ts", 0)) / (30 * DAY))
-            importance = p.get("confidence", 0.5) * (1.5 if p.get("pinned") else 1.0)
-            scored.append({"note_id": dst, "fact": p.get("fact", ""),
-                           "category": p.get("category"), "pinned": p.get("pinned", False),
+            recency = 2.718 ** (-(now - (e.get("ts") or 0)) / (30 * DAY))
+            importance = e.get("confidence", 0.5) \
+                * (1.5 if e.get("pinned") else 1.0)
+            scored.append({"note_id": nid, "fact": p.get("fact", ""),
+                           "category": p.get("category"),
+                           "pinned": e.get("pinned", False),
                            "score": round(0.5 * relevance + 0.2 * recency
                                            + 0.3 * importance / 1.5, 3)})
         scored.sort(key=lambda x: -x["score"])
         episode = None
         eps = [(d, self.store.get_node(d)) for _, d, _
-               in self.store.out_edges(account_id, "HAS_EPISODE")]
+               in self.store.out_edges(subj, "HAS_EPISODE")]
         eps = [(d, n) for d, n in eps if n]
         if eps:
             d, n = max(eps, key=lambda x: x[1]["props"].get("ts", 0))
             episode = {"id": d, "level": n["props"].get("level"),
                        "narrative": n["props"].get("narrative", "")[:120]}
-        return {"open_promises": open_promises(self.store, account_id),
+        return {"open_promises": open_promises(self.store, subj),
                 "memories": scored[:limit], "latest_episode": episode}
 
     # ===============================================================
@@ -265,8 +273,14 @@ class KBTools:
     # 回写
     # ===============================================================
     def submit_result(self, result: dict, llm=None) -> dict:
-        """执行结果回写：抽取 → 入队（幂等）→ 消费 → 返回统计。"""
-        events = extract_events_from_result(result, llm=llm)
+        """执行结果回写：抽取 → 入队（幂等）→ 消费 → 返回统计。
+
+        分区键归一到记忆主体（Subject）：同一数字生命的跨平台写入同分区串行。
+        """
+        events = extract_events_from_result(result, llm=llm, store=self.store)
+        subj = self.store.subject_of(result["account_id"])
+        for e in events:
+            e.partition = subj
         accepted = sum(1 for e in events if self.queue.submit(e))
         self.queue.drain()
         return {"events": len(events), "accepted": accepted,
@@ -338,16 +352,17 @@ class KBTools:
     # 人可读记忆摘要（借鉴 Proma：分层路由 + 索引只做路由）
     # ===============================================================
     def memory_digest(self, account_id, recent_limit=5) -> str:
-        """账号记忆的 Markdown 摘要：CLI `kb memory` / GUI 检查器 / 人工导出。
+        """账号（→记忆主体）记忆的 Markdown 摘要：CLI `kb memory` / GUI 检查器。
 
         分层路由原则：情景记忆只列周期与一行摘要（路由索引，需全文时
         按 Episode ID 下钻）；语义记忆全文（量小且是决策依据）；
-        承诺置顶（连续性优先）。
+        承诺置顶（连续性优先）。主观状态（stale/pinned）读自 HAS_MEMORY 边。
         """
-        from .rollup import open_promises
+        from .rollup import memory_edges, open_promises
+        subj = self.store.subject_of(account_id)
         persona = self.get_persona(account_id)
         state = self.get_account_state(account_id)
-        lines = [f"# {persona.get('name', account_id)}（{account_id}）",
+        lines = [f"# {persona.get('name', account_id)}（{subj}）",
                  ""]
         # —— 状态层 ——
         lines += ["## 当前状态",
@@ -356,23 +371,22 @@ class KBTools:
                   f"- 今日行为: {state.get('today_action_counts') or '无'}"
                   f"  冷却剩余: {state.get('cooldown_remaining_h')}h", ""]
         # —— 语义记忆：承诺置顶 ——
-        promises = open_promises(self.store, account_id)
+        promises = open_promises(self.store, subj)
         lines.append("## 语义记忆")
         if promises:
             lines.append("### 未兑现承诺（决策优先兑现）")
             for pr in promises:
                 lines.append(f"- [ ] {pr['fact']}")
         notes = []
-        for _, dst, _ in self.store.out_edges(account_id, "HAS_MEMORY"):
-            n = self.store.get_node(dst)
-            if not n or n["props"].get("category") == "promise":
+        for _, nid, e, p in memory_edges(self.store, subj):
+            if p.get("category") == "promise":
                 continue
-            notes.append((dst, n["props"]))
-        notes.sort(key=lambda x: (x[1].get("status") == "stale",
-                                  -x[1].get("ts", 0)))
-        for nid, p in notes:
-            flag = "📌 " if p.get("pinned") else ""
-            stale = "（已过期）" if p.get("status") == "stale" else ""
+            notes.append((nid, p, e or {}))
+        notes.sort(key=lambda x: (x[2].get("status") == "stale",
+                                  -(x[2].get("ts") or 0)))
+        for nid, p, e in notes:
+            flag = "📌 " if e.get("pinned") else ""
+            stale = "（已过期）" if e.get("status") == "stale" else ""
             lines.append(f"- {flag}[{p.get('category')}] "
                          f"{p.get('fact', '')}{stale}")
         if not promises and not notes:
@@ -381,7 +395,7 @@ class KBTools:
         # —— 情景记忆：索引只做路由 ——
         lines.append("## 情景记忆（索引：按周期下钻全文）")
         eps = []
-        for _, dst, _ in self.store.out_edges(account_id, "HAS_EPISODE"):
+        for _, dst, _ in self.store.out_edges(subj, "HAS_EPISODE"):
             n = self.store.get_node(dst)
             if n:
                 eps.append((dst, n["props"]))
@@ -407,11 +421,16 @@ class KBTools:
     # ===============================================================
     def create_account(self, platform, handle, name=None, persona_id=None,
                        persona_props=None, interests=None, device=None,
-                       status="warming", risk_level="low") -> dict:
-        """手动添加矩阵账号：Account + 人设（复用或新建）+ 兴趣树 + 设备属性。
+                       status="warming", risk_level="low",
+                       subject_id=None) -> dict:
+        """手动添加矩阵账号：Account + 记忆主体 Subject + 人设 + 兴趣树 + 设备。
 
         - platform/handle → 账号 ID（acc:平台:handle，Schema 强校验）
-        - persona_id 已存在则复用（多人设共享）；否则按 persona_props 新建
+        - subject_id：账号归属的记忆主体（数字生命）。缺省新建 subj:{handle}；
+          传入已存在的 subject（如同一数字生命的第二个平台账号）则挂到它名下
+          ——跨平台共享记忆/人设。主体已有人设时复用，不覆盖。
+        - persona_id 已存在则复用（多人设共享）；否则按 persona_props 新建，
+          挂在主体上（HAS_PERSONA: Subject→Persona）
         - interests：话题 slug 列表（如 beauty.skincare），话题不存在则建
         - device：云机设备参数（deviceName/adbPort/systemPort/appiumUrl…），
           存为账号属性，执行层 build_command 可直接取用
@@ -423,13 +442,13 @@ class KBTools:
             raise ValueError(f"账号已存在: {account_id}")
         if persona_id and not self.store.has_node(persona_id):
             raise ValueError(f"人设不存在: {persona_id}")
-        if persona_id is None:
-            pp = persona_props or {}
-            slug = re.sub(r"[^\w\-]+", "-", pp.get("name", handle)).strip("-").lower()
-            persona_id = f"per:{slug or handle}"
+        # 主体：显式给出则复用；缺省每账号一个（subj:{handle}，数字生命默认独立）
+        subj = subject_id or f"subj:{handle}"
+        if subject_id and not self.store.has_node(subj):
+            raise ValueError(f"记忆主体不存在: {subj}（先创建或去掉 subject_id）")
 
         def ev(i, kind, payload):
-            return make_event(account_id, kind, payload,
+            return make_event(subj, kind, payload,
                               event_id=f"evt:acc:{account_id}:{i:02d}",
                               ts=_t.time())
 
@@ -438,12 +457,36 @@ class KBTools:
             "props": {"name": name or handle, "status": status,
                       "risk_level": risk_level, "created_at": _t.time(),
                       **(device or {})}})]
-        if not self.store.has_node(persona_id):
-            events.append(ev(1, "upsert_node", {
-                "id": persona_id, "type": "Persona", "props": persona_props or {}}))
-        events.append(ev(2, "upsert_edge", {"src": account_id,
-                                             "type": "HAS_PERSONA", "dst": persona_id}))
-        i = 3
+        i = 1
+        if not self.store.has_node(subj):
+            events.append(ev(i, "upsert_node", {
+                "id": subj, "type": "Subject",
+                "props": {"kind": "persona",
+                          "name": name or handle, "created_at": _t.time()}}))
+            i += 1
+        events.append(ev(i, "upsert_edge", {"src": subj, "type": "HAS_HANDLE",
+                                            "dst": account_id}))
+        i += 1
+        # 人设：主体已有则复用（跨平台同数字生命共享人设）
+        has_persona = any(True for _ in self.store.out_edges(subj, "HAS_PERSONA")) \
+            if self.store.has_node(subj) else False
+        if not has_persona:
+            if persona_id is None:
+                pp = persona_props or {}
+                slug = re.sub(r"[^\w\-]+", "-", pp.get("name", handle)).strip("-").lower()
+                persona_id = f"per:{slug or handle}"
+            if not self.store.has_node(persona_id):
+                events.append(ev(i, "upsert_node", {
+                    "id": persona_id, "type": "Persona", "props": persona_props or {}}))
+                i += 1
+            events.append(ev(i, "upsert_edge", {"src": subj,
+                                                 "type": "HAS_PERSONA",
+                                                 "dst": persona_id}))
+            i += 1
+        else:
+            for _, pid, _ in self.store.out_edges(subj, "HAS_PERSONA"):
+                persona_id = pid
+                break
         for slug in (interests or []):
             topic_id = slug if slug.startswith("topic:") else f"topic:{slug}"
             if not self.store.has_node(topic_id):
@@ -457,7 +500,8 @@ class KBTools:
         for e in events:
             self.queue.submit(e)
         self.queue.drain()
-        return {"account_id": account_id, "persona_id": persona_id,
+        return {"account_id": account_id, "subject_id": subj,
+                "persona_id": persona_id,
                 "created": True, "events": len(events)}
 
     def recent_decisions(self, account_id, limit=20) -> list:

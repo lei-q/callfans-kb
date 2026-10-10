@@ -75,18 +75,32 @@ def _seed_events():
     ]:
         node("seed", rid, "Rule", props)
 
+    # ---- 节点：记忆主体（数字生命）----
+    # 每个 Subject 持有记忆/人设/情景；Account 是它在某平台的操作句柄。
+    # lily 跨双平台（小红书 + TikTok）共享同一主体 —— 跨平台不失忆的验收样本。
+    for sid, name in [
+        ("subj:lily_beauty", "小莉"),
+        ("subj:kai_fit", "阿凯"),
+        ("subj:yang_tech", "小杨"),
+        ("subj:momo_beauty", "默默"),        # 与 lily 共用人设但独立数字生命
+        ("subj:lin_fit", "小林"),
+    ]:
+        node("seed", sid, "Subject",
+             {"kind": "persona", "name": name, "created_at": NOW - 90 * DAY})
+
     # ---- 节点：账号 ----
-    for aid, per, age_days in [
-        ("acc:xiaohongshu:lily_beauty", "per:beauty-lily", 90),
-        ("acc:xiaohongshu:kai_fit", "per:fit-kai", 120),
-        ("acc:xiaohongshu:yang_tech", "per:tech-yang", 120),
-        ("acc:xiaohongshu:momo_beauty", "per:beauty-lily", 2),   # 新号：触发限流规则
-        ("acc:xiaohongshu:lin_fit", "per:fit-kai", 60),
-        ("acc:xiaohongshu:skincare_lover", None, 200),           # 外部 KOL：互动目标
+    for aid, subj, age_days in [
+        ("acc:xiaohongshu:lily_beauty", "subj:lily_beauty", 90),
+        ("acc:tiktok:lily_beauty", "subj:lily_beauty", 45),      # 同一数字生命，第二平台
+        ("acc:xiaohongshu:kai_fit", "subj:kai_fit", 120),
+        ("acc:xiaohongshu:yang_tech", "subj:yang_tech", 120),
+        ("acc:xiaohongshu:momo_beauty", "subj:momo_beauty", 2),  # 新号：触发限流规则
+        ("acc:xiaohongshu:lin_fit", "subj:lin_fit", 60),
+        ("acc:xiaohongshu:skincare_lover", None, 200),           # 外部 KOL：无主体
     ]:
         props = {"platform": aid.split(":")[1], "status": "active",
                  "risk_level": "low", "created_at": NOW - age_days * DAY}
-        if per is None:
+        if subj is None:
             props["external"] = True
         node(aid, aid, "Account", props)
 
@@ -98,14 +112,23 @@ def _seed_events():
     ]:
         for t in topics:
             edge("seed", pid, "INTERESTED_IN", t)
-    for aid, per in [
-        ("acc:xiaohongshu:lily_beauty", "per:beauty-lily"),
-        ("acc:xiaohongshu:kai_fit", "per:fit-kai"),
-        ("acc:xiaohongshu:yang_tech", "per:tech-yang"),
-        ("acc:xiaohongshu:momo_beauty", "per:beauty-lily"),
-        ("acc:xiaohongshu:lin_fit", "per:fit-kai"),
+    for sid, per in [
+        ("subj:lily_beauty", "per:beauty-lily"),
+        ("subj:kai_fit", "per:fit-kai"),
+        ("subj:yang_tech", "per:tech-yang"),
+        ("subj:momo_beauty", "per:beauty-lily"),   # 人设规格可复用，数字生命独立
+        ("subj:lin_fit", "per:fit-kai"),
     ]:
-        edge(aid, aid, "HAS_PERSONA", per)
+        edge(sid, sid, "HAS_PERSONA", per)
+    for aid, subj in [
+        ("acc:xiaohongshu:lily_beauty", "subj:lily_beauty"),
+        ("acc:tiktok:lily_beauty", "subj:lily_beauty"),
+        ("acc:xiaohongshu:kai_fit", "subj:kai_fit"),
+        ("acc:xiaohongshu:yang_tech", "subj:yang_tech"),
+        ("acc:xiaohongshu:momo_beauty", "subj:momo_beauty"),
+        ("acc:xiaohongshu:lin_fit", "subj:lin_fit"),
+    ]:
+        edge(subj, subj, "HAS_HANDLE", aid)
     return ev
 
 

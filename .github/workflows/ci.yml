@@ -31,6 +31,7 @@ jobs:
           python demo/run_executor_adapter_demo.py
           python demo/run_sqlite_demo.py
           python demo/run_api_contract_demo.py
+          python demo/run_subject_demo.py
 
       - name: 契约漂移检查（openapi.json 必须与 kb/api_schema.py 一致）
         run: |

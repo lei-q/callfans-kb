@@ -18,11 +18,18 @@ from .rollup import (consolidate_memory, daily_rollup, expire_stale_notes,
                      period_rollup)
 
 
+def matrix_subjects(store) -> list:
+    """矩阵记忆主体 = 全部 Subject 节点（数字生命）。rollup/固化/淘汰按主体跑，
+    同一主体的多平台账号自动汇入（rollup 内部归一）。"""
+    return list(store.node_ids("Subject"))
+
+
 def matrix_accounts(store) -> list:
-    """矩阵账号 = 绑定了人设的账号（外部 KOL 不做 rollup）。"""
+    """矩阵账号 = 挂在某个记忆主体下的平台账号句柄（外部 KOL 不在其列）。
+    决策流/账号墙等账号级视图用它。"""
     out = []
     for nid in store.node_ids("Account"):
-        if any(True for _ in store.out_edges(nid, "HAS_PERSONA")):
+        if any(True for _ in store.in_edges(nid, "HAS_HANDLE")):
             out.append(nid)
     return out
 
@@ -30,12 +37,12 @@ def matrix_accounts(store) -> list:
 def daily_maintenance(tools, summarizer=None, day=None) -> dict:
     """每账号：未归档行为流水 → 日摘要（无未归档则跳过）。"""
     results = {}
-    for acc in matrix_accounts(tools.store):
+    for subj in matrix_subjects(tools.store):
         try:
-            r = daily_rollup(tools.store, acc, day=day, summarizer=summarizer)
-            results[acc] = r
+            r = daily_rollup(tools.store, subj, day=day, summarizer=summarizer)
+            results[subj] = r
         except Exception as e:                      # 单账号失败不影响其他账号
-            results[acc] = {"error": str(e)}
+            results[subj] = {"error": str(e)}
     return {"accounts": len(results),
             "rolled": sum(1 for r in results.values() if r.get("archived_actions")),
             "results": results}
@@ -46,20 +53,20 @@ def weekly_maintenance(tools, summarizer=None, extractor=None,
     """每账号：周卷积（Episode）+ 记忆固化（MemoryNote）+ 时效淘汰。建议周一跑。"""
     rollups, consos = {}, {}
     expired = 0
-    for acc in matrix_accounts(tools.store):
+    for subj in matrix_subjects(tools.store):
         try:
-            rollups[acc] = period_rollup(tools.store, acc, level="week",
-                                         period=period, summarizer=summarizer)
+            rollups[subj] = period_rollup(tools.store, subj, level="week",
+                                          period=period, summarizer=summarizer)
         except Exception as e:
-            rollups[acc] = {"error": str(e)}
+            rollups[subj] = {"error": str(e)}
         try:
-            consos[acc] = consolidate_memory(tools.store, acc,
-                                             extractor=extractor,
-                                             since_days=since_days)
+            consos[subj] = consolidate_memory(tools.store, subj,
+                                              extractor=extractor,
+                                              since_days=since_days)
         except Exception as e:
-            consos[acc] = {"error": str(e)}
+            consos[subj] = {"error": str(e)}
         try:
-            expired += expire_stale_notes(tools.store, acc,
+            expired += expire_stale_notes(tools.store, subj,
                                           max_age_days=max_age_days)["expired"]
         except Exception:
             pass
@@ -73,12 +80,12 @@ def weekly_maintenance(tools, summarizer=None, extractor=None,
 def monthly_maintenance(tools, summarizer=None, period=None) -> dict:
     """每账号：月卷积。建议每月 1 日跑。"""
     results = {}
-    for acc in matrix_accounts(tools.store):
+    for subj in matrix_subjects(tools.store):
         try:
-            results[acc] = period_rollup(tools.store, acc, level="month",
-                                         period=period, summarizer=summarizer)
+            results[subj] = period_rollup(tools.store, subj, level="month",
+                                          period=period, summarizer=summarizer)
         except Exception as e:
-            results[acc] = {"error": str(e)}
+            results[subj] = {"error": str(e)}
     return {"accounts": len(results),
             "episodes": sum(1 for r in results.values() if r.get("episode_id")),
             "results": results}
@@ -87,12 +94,12 @@ def monthly_maintenance(tools, summarizer=None, period=None) -> dict:
 def yearly_maintenance(tools, summarizer=None, period=None) -> dict:
     """每账号：年卷积（年度叙事）。"""
     results = {}
-    for acc in matrix_accounts(tools.store):
+    for subj in matrix_subjects(tools.store):
         try:
-            results[acc] = period_rollup(tools.store, acc, level="year",
-                                         period=period, summarizer=summarizer)
+            results[subj] = period_rollup(tools.store, subj, level="year",
+                                          period=period, summarizer=summarizer)
         except Exception as e:
-            results[acc] = {"error": str(e)}
+            results[subj] = {"error": str(e)}
     return {"accounts": len(results),
             "episodes": sum(1 for r in results.values() if r.get("episode_id")),
             "results": results}

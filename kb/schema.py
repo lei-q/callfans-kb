@@ -14,22 +14,27 @@ from dataclasses import dataclass, field
 # ---------------------------------------------------------------------------
 # 节点类型
 # ---------------------------------------------------------------------------
-NODE_TYPES = {"Account", "Persona", "Topic", "Post", "Rule", "ActionRecord",
-              "Episode", "MemoryNote"}
+NODE_TYPES = {"Subject", "Account", "Persona", "Topic", "Post", "Rule",
+              "ActionRecord", "Episode", "MemoryNote"}
 
 # 节点类型说明（记忆层）：
+#   Subject    记忆主体（数字生命/人/agent/项目）：记忆与人设的归属者，
+#              Account 是它在某平台上的操作句柄（1 Subject : N Account）
 #   Episode    情景记忆：周/月/年卷积叙事（level=week|month|year，含人设漂移检查）
 #   MemoryNote 语义记忆：从经历中沉淀的稳定事实/经验教训/里程碑/对粉丝的承诺
+#              节点只存客观部分（fact/category，全局内容指纹去重）；
+#              主观状态（status/pinned/confidence/ts）在 HAS_MEMORY 边上，按主体私有
 
 # ID 规范（入库前强校验）
 ID_PATTERNS = {
+    "Subject": re.compile(r"^subj:[\w\-]+$"),             # subj:slug（跨平台主体）
     "Account": re.compile(r"^acc:[a-z]+:[\w.\-]+$"),      # acc:平台:handle
     "Persona": re.compile(r"^per:[\w\-]+$"),              # per:slug
     "Topic": re.compile(r"^topic:[a-z0-9_.\-]+$"),        # topic:a.b.c（层级用 . 分隔）
     "Post": re.compile(r"^post:[a-z]+:[\w.\-]+$"),        # post:平台:原生帖子ID
     "Rule": re.compile(r"^rule:[\w\-]+$"),                # rule:slug
     "ActionRecord": re.compile(r"^act:[\w\-]+$"),         # act:uuid 或 act:seed-001
-    "Episode": re.compile(r"^ep:[\w.\-]+$"),              # ep:平台.handle.周期
+    "Episode": re.compile(r"^ep:[\w.\-]+$"),              # ep:主体slug.周期
     "MemoryNote": re.compile(r"^note:[\w\-]+$"),          # note:md5前10（事实指纹，幂等）
 }
 
@@ -37,17 +42,18 @@ ID_PATTERNS = {
 # 边类型：(起点类型, 终点类型)，"*" 表示任意已存在节点
 # ---------------------------------------------------------------------------
 EDGE_TYPES = {
-    "HAS_PERSONA":    ("Account", "Persona"),       # 账号 → 人设（本体定义边）
+    "HAS_HANDLE":     ("Subject", "Account"),       # 主体 → 平台账号句柄（1:N）
+    "HAS_PERSONA":    ("Subject", "Persona"),       # 主体 → 人设（本体定义边）
     "INTERESTED_IN":  ("Persona", "Topic"),         # 人设兴趣（本体定义边）
     "FOLLOWS":        ("Account", "Topic"),         # 行为聚合的话题关注（带计数）
     "PUBLISHED":      ("Account", "Post"),
     "ABOUT":          ("Post", "Topic"),
     "INTERACTS_WITH": ("Account", "Account"),       # 行为聚合的互动（带计数/权重）
     "APPLIES_TO":     ("Rule", "Topic"),
-    "PERFORMED":      ("Account", "ActionRecord"),  # 行为流水（热区数据）
+    "PERFORMED":      ("Account", "ActionRecord"),  # 行为流水（热区数据，账号级）
     "DECIDED_VIA":    ("ActionRecord", "*"),        # 决策依据（provenance，可追溯）
-    "HAS_EPISODE":    ("Account", "Episode"),       # 账号 → 情景记忆（周/月/年叙事）
-    "HAS_MEMORY":     ("Account", "MemoryNote"),    # 账号 → 语义记忆（事实/教训/里程碑/承诺）
+    "HAS_EPISODE":    ("Subject", "Episode"),       # 主体 → 情景记忆（周/月/年叙事）
+    "HAS_MEMORY":     ("Subject", "MemoryNote"),    # 主体 → 语义记忆；主观状态在本边上
     "COMMITTED_IN":   ("MemoryNote", "Post"),       # 承诺在哪条内容中做出
     "FULFILLED_BY":   ("MemoryNote", "*"),          # 承诺由哪次行为兑现（闭环追踪）
 }

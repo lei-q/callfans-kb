@@ -66,10 +66,31 @@ class KnowledgeStore:
                 for (t, s) in self._adj_in.get(dst, [])
                 if etype is None or t == etype]
 
-    def persona_id_of(self, account_id) -> str:
-        for _, dst, _ in self.out_edges(account_id, "HAS_PERSONA"):
+    def subject_of(self, node_id) -> str:
+        """记忆主体归一：Account → 所属 Subject（HAS_HANDLE 的起点）；
+        Subject → 自身；无主体的账号（如外部 KOL）→ 自身（记忆操作不会发生
+        在这类账号上，返回自身仅保证 partition 语义不崩）。
+        所有记忆层操作（HAS_EPISODE/HAS_MEMORY/摘要/固化）经此归一到主体。"""
+        n = self.get_node(node_id)
+        if n is None:
+            raise KeyError(f"节点不存在: {node_id}")
+        if n["type"] == "Subject":
+            return node_id
+        if n["type"] == "Account":
+            for _, src, _ in self.in_edges(node_id, "HAS_HANDLE"):
+                return src
+        return node_id
+
+    def persona_id_of(self, node_id) -> str:
+        """人设归属：主体（或账号 → 先归一主体）→ HAS_PERSONA。"""
+        subj = self.subject_of(node_id)
+        for _, dst, _ in self.out_edges(subj, "HAS_PERSONA"):
             return dst
-        raise KeyError(f"账号未绑定人设: {account_id}")
+        raise KeyError(f"主体未绑定人设: {node_id} → {subj}")
+
+    def accounts_of(self, subject_id) -> list:
+        """主体的全部平台账号句柄（按 HAS_HANDLE）。"""
+        return [d for _, d, _ in self.out_edges(subject_id, "HAS_HANDLE")]
 
     def stats(self) -> dict:
         return {"nodes": len(self._nodes), "edges": len(self._edges)}

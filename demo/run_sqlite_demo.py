@@ -77,7 +77,7 @@ def main():
     daily_rollup(store, LILY, day="20261010")
     wr = period_rollup(store, LILY, level="week", period="2026W41")
     promises = open_promises(store, LILY)
-    fp = fulfill_promise(store, promises[0]["note_id"],
+    fp = fulfill_promise(store, promises[0]["note_id"], LILY,
                          by_ref="post:xiaohongshu:s1")
     print(f"周 Episode: {wr['episode_id']}  兑现: {fp['status']}")
     assert fp["status"] == "fulfilled"

@@ -23,7 +23,7 @@ import json
 # API 版本（语义化）：破坏性变更（删字段/改语义/删端点）bump 主版本；
 # 新增可选字段/新增端点 bump 次版本；纯修正 bump 补丁版本。
 # 注意：这是「API 契约版本」，独立于应用发布 tag（v*）演进，两者无对应关系。
-API_VERSION = "0.1.0"
+API_VERSION = "0.2.0"
 
 _ERROR = {"type": "object", "required": ["error"],
           "properties": {"error": {"type": "string"}},
@@ -372,14 +372,19 @@ def openapi_spec() -> dict:
                 "notes": {"type": "array", "items": {"type": "string"}}}),
             "CreateAccountInput": _obj(["platform", "handle"], {
                 "platform": {"type": "string"}, "handle": {"type": "string"},
+                "subject_id": {"type": "string",
+                               "description": "归属的既有记忆主体（跨平台同数字生命）；缺省新建"},
                 "name": {"type": "string"}, "persona_id": {"type": "string"},
                 "persona": {"type": "object", "additionalProperties": True,
                             "description": "人设属性（persona_props）"},
                 "interests": {"type": "array", "items": {"type": "string"}},
                 "device": {"type": "string"}}),
-            "CreateAccountResult": _obj(["account_id", "persona_id", "created",
-                                         "events"], {
-                "account_id": {"type": "string"}, "persona_id": {"type": "string"},
+            "CreateAccountResult": _obj(["account_id", "subject_id",
+                                         "persona_id", "created", "events"], {
+                "account_id": {"type": "string"},
+                "subject_id": {"type": "string",
+                               "description": "记忆主体（缺省新建 subj:{handle}；传 subject_id 可挂到既有数字生命）"},
+                "persona_id": {"type": "string"},
                 "created": {"type": "boolean"}, "events": {"type": "integer"}}),
             "ImportResultItem": {
                 "oneOf": [{"$ref": "#/components/schemas/CreateAccountResult"},
@@ -400,8 +405,10 @@ def openapi_spec() -> dict:
                 "refs": {"type": "array", "items": _obj(["id", "type", "label"], {
                     "id": {"type": "string"}, "type": {"type": "string"},
                     "label": {"type": "string"}})}}, additional=True),
-            "AccountOverview": _obj(["persona", "state", "promises", "memories",
-                                     "episodes", "digest"], {
+            "AccountOverview": _obj(["subject_id", "persona", "state", "promises",
+                                     "memories", "episodes", "digest"], {
+                "subject_id": {"type": "string",
+                               "description": "记忆主体（数字生命）；同主体的跨平台账号共享全部记忆"},
                 "persona": {"$ref": "#/components/schemas/PersonaCard"},
                 "state": {"$ref": "#/components/schemas/AccountState"},
                 "promises": {"type": "array",

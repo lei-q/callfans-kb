@@ -16,30 +16,40 @@
 
 | 类型 | 格式 | 示例 |
 | --- | --- | --- |
+| Subject | `subj:{slug}`（跨平台主体） | `subj:lily_beauty` |
 | Account | `acc:{platform}:{handle}` | `acc:xiaohongshu:lily_beauty` |
 | Persona | `per:{slug}` | `per:beauty-lily` |
 | Topic | `topic:{a}.{b}.{c}`（层级用 `.` 编码） | `topic:tech.ai.llm` |
 | Post | `post:{platform}:{native_id}` | `post:xiaohongshu:p001` |
 | Rule | `rule:{slug}` | `rule:xhs-new-account` |
 | ActionRecord | `act:{uuid}` 或 `act:{业务ID}` | `act:demo-101` |
-| Episode | `ep:{平台}.{handle}.{周期}` | `ep:xiaohongshu.lily_beauty.2026W41` |
+| Episode | `ep:{主体slug}.{周期}`（跨平台稳定） | `ep:lily_beauty.2026W41` |
 | MemoryNote | `note:{事实指纹}` | `note:857ef3acec` |
 
 统一 ID 是**联结（问题 3）的地基**：所有数据源入库前先消歧到这套 ID，
 跨本体（人设/领域/关系）的查询都从 `Account`、`Topic` 两个枢纽节点出发。
 
-## 2. 节点类型（8 种）
+## 2. 节点类型（9 种）
+
+> 2026-10-11（主体模型改造，docs/05 §3/§11 第 2 步）：新增 **Subject 记忆主体**。
+> 记忆归属规则：`HAS_PERSONA` / `HAS_EPISODE` / `HAS_MEMORY` 的起点全部是
+> Subject（数字生命）；`Account` 退化为它在某平台的**操作句柄**
+> （`HAS_HANDLE: Subject→Account`，1:N）。同一数字生命跨平台共享
+> 记忆/人设/情景；频控与行为流水仍是账号级。MemoryNote 节点只存客观字段
+> （fact/category，全局指纹去重），**主观状态（status/pinned/confidence/ts）
+> 在 HAS_MEMORY 边上、按主体私有**——同一条事实被多主体共享节点、各持状态。
 
 | 类型 | 用途 | 关键属性 | 冷热 |
 | --- | --- | --- | --- |
-| Account | 矩阵账号（或外部用户） | `platform, status, risk_level, created_at, cooldown_until, summary_day:*`（rollup 产物） | 温 |
+| Subject | 记忆主体（数字生命/人/agent/项目），记忆与人设的归属者 | `kind(persona/person/agent/project/client), name, created_at, summary_day:*`（rollup 产物，跨平台汇入） | 温 |
+| Account | 平台操作句柄（或外部用户） | `platform, status, risk_level, created_at, cooldown_until` | 温 |
 | Persona | 人设定义（多账号可复用同一人设） | `name, age_band, occupation, location, mbti, language_style, bio` | 冷（稳定低频更新） |
 | Topic | 层级话题（层级在 ID 里，不存 parent 边） | `label` | 冷 |
 | Post | 已发布内容（只存 digest，不存全文） | `platform, published_at, content_type, digest, views, likes, comments` | 温 |
 | Rule | 平台规则/风控约束（含共识确证的公共规则） | `name, kind, params, actions, platform, hard, text, status, confirmations, effective_at, jitter_window` | 冷 |
 | ActionRecord | 行为流水（热区数据，rollup 后归档） | `action, outcome, topic_id, digest, decision_id, archived, ts` | 热→冷 |
 | Episode | 情景记忆：周/月/年卷积叙事（docs/03） | `level, period, narrative, coverage, drift, drift_detail, confidence, ts` | 冷 |
-| MemoryNote | 语义记忆：稳定事实/教训/里程碑/承诺 | `fact, category, confidence, pinned, status, ts` | 冷（pinned 不衰减） |
+| MemoryNote | 语义记忆：稳定事实/教训/里程碑/承诺（节点=客观 fact/category；主观状态在 HAS_MEMORY 边上） | `fact, category` | 冷（pinned 不衰减） |
 
 Post 只存 `digest` 不存全文——原始数据在图谱外归档（冷区），
 图谱里的事实自带压缩语义（问题 2 的"结构即压缩"）。
@@ -48,7 +58,8 @@ Post 只存 `digest` 不存全文——原始数据在图谱外归档（冷区�
 
 | 边 | 方向 | 语义 | 联结类型 |
 | --- | --- | --- | --- |
-| `HAS_PERSONA` | Account→Persona | 账号绑定的唯一人设 | 本体定义（强） |
+| `HAS_HANDLE` | Subject→Account | 主体在某平台的操作句柄（1:N） | 本体定义（强） |
+| `HAS_PERSONA` | Subject→Persona | 主体绑定的唯一人设（跨平台共享） | 本体定义（强） |
 | `INTERESTED_IN` | Persona→Topic | 人设兴趣树 | 本体定义（强） |
 | `FOLLOWS` | Account→Topic | 行为聚合的话题关注（`count`） | 行为聚合 |
 | `INTERACTS_WITH` | Account→Account | 行为聚合的互动（`count/weight`） | 行为聚合 |
@@ -57,8 +68,8 @@ Post 只存 `digest` 不存全文——原始数据在图谱外归档（冷区�
 | `APPLIES_TO` | Rule→Topic | 规则适用话题（预留） | 本体定义 |
 | `PERFORMED` | Account→ActionRecord | 行为流水 | 热区数据 |
 | `DECIDED_VIA` | ActionRecord→任意 | **决策依据（provenance）** | 决策追溯 |
-| `HAS_EPISODE` | Account→Episode | 账号的情景记忆（docs/03） | 记忆联结 |
-| `HAS_MEMORY` | Account→MemoryNote | 账号的语义记忆（事实/教训/承诺） | 记忆联结 |
+| `HAS_EPISODE` | Subject→Episode | 主体的情景记忆（docs/03） | 记忆联结 |
+| `HAS_MEMORY` | Subject→MemoryNote | 主体的语义记忆；边携带主观状态 `status/pinned/confidence/ts` | 记忆联结 |
 | `COMMITTED_IN` | MemoryNote→Post | 承诺在哪条内容中做出 | 记忆联结 |
 | `FULFILLED_BY` | MemoryNote→任意 | 承诺由哪次行为兑现（闭环） | 记忆联结 |
 

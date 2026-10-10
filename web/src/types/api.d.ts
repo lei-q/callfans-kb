@@ -1035,6 +1035,8 @@ export interface components {
         CreateAccountInput: {
             platform: string;
             handle: string;
+            /** @description 归属的既有记忆主体（跨平台同数字生命）；缺省新建 */
+            subject_id?: string;
             name?: string;
             persona_id?: string;
             /** @description 人设属性（persona_props） */
@@ -1046,6 +1048,8 @@ export interface components {
         };
         CreateAccountResult: {
             account_id: string;
+            /** @description 记忆主体（缺省新建 subj:{handle}；传 subject_id 可挂到既有数字生命） */
+            subject_id: string;
             persona_id: string;
             created: boolean;
             events: number;
@@ -1075,6 +1079,8 @@ export interface components {
             }[];
         };
         AccountOverview: {
+            /** @description 记忆主体（数字生命）；同主体的跨平台账号共享全部记忆 */
+            subject_id: string;
             persona: components["schemas"]["PersonaCard"];
             state: components["schemas"]["AccountState"];
             promises: components["schemas"]["OpenPromise"][];

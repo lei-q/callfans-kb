@@ -81,7 +81,9 @@ def report_signal(store, queue, account_id, signal_id, name, message,
     if confirmed and not (node and node["props"].get("effective_at")):
         rule_props["effective_at"] = now + base_delay
 
-    events = [make_event(account_id, "upsert_node",
+    # 分区 = 记忆主体（同主体串行写）
+    subj = store.subject_of(account_id)
+    events = [make_event(subj, "upsert_node",
                          {"id": rid, "type": "Rule", "props": rule_props})]
     for ev in events:
         queue.submit(ev)
