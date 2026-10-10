@@ -4,17 +4,28 @@
 零第三方依赖（http.server 实现）。定位是本机/内网 API，不是公网服务——
 没有鉴权与限流，公网暴露请加反向代理。
 
-端点：
+**契约**：本文件只列端点速览；权威定义在 kb/api_schema.py（OpenAPI 3.1，
+导出 docs/api/openapi.json，TS 类型由它生成）。改端点必须同步改 spec，
+demo/run_api_contract_demo.py 与 CI 漂移检查负责打红。
+
+端点速览：
+  GET  /            /index.html        Web 控制台（静态单页）
   GET  /health                          存活检查 + 后端
   GET  /stats                           图谱统计
+  GET  /personas                        人设及关联账号
+  GET  /topics                          话题
+  GET  /rules                           规则（含确证/灰度字段）
+  GET  /decisions?account=&limit=       决策流（DECIDED_VIA 可解释性视图）
   GET  /accounts                        矩阵账号及状态
-  GET  /account?account=...             单账号状态（persona/state/recall）
-  GET  /memory?account=...              人可读记忆摘要（Markdown）
-  GET  /search?q=...&k=5                知识检索
-  POST /decide    {account_id, action_type, topic_id?, budget_tokens?}
-  POST /plan      {account_id, action_type, topic_id?, job_id?, task_params?}
-  POST /report    {result: {...}}       执行结果回写（含承诺扫描）
-  POST /maintenance/{level}             维护任务（body 可选 {"llm": true}）
+  GET  /account?account=&q=             单账号全景（persona/state/promises/…）
+  GET  /memory?account=                 人可读记忆摘要（Markdown）
+  GET  /search?q=&k=                    知识检索
+  POST /accounts                        创建账号（含人设）
+  POST /accounts/import                 批量导入
+  POST /decide                          两段式决策
+  POST /plan                            决策→执行规格（+argv）
+  POST /report                          执行结果回写（幂等 + 承诺扫描）
+  POST /maintenance/{level}             维护任务（body 可选、当前被忽略）
 """
 from __future__ import annotations
 
@@ -181,8 +192,10 @@ def make_handler(tools, queue, adapter):
                                     interests=a.get("interests"),
                                     device=a.get("device")))
                             except Exception as e:
+                                # 非法项（含非 dict）归入 error 项，不中断批量导入
                                 results.append({"error": str(e),
-                                                "handle": a.get("handle")})
+                                                "handle": a.get("handle")
+                                                if isinstance(a, dict) else None})
                     ok = sum(1 for r in results if r.get("created"))
                     return self._send(200, {"imported": ok,
                                             "total": len(results),

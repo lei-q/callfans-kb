@@ -558,7 +558,7 @@ remember / recall / commit / rewind      （+ audit 作为横切）
 
 | 步 | 内容 | 为什么在这个位置 | 新增验收 |
 | --- | --- | --- | --- |
-| 1 | **立 HTTP API 契约**（OpenAPI 生成 + TS 类型生成） | 定案 3 的唯一新增债，越晚越贵 | 前端类型由 schema 生成，改一处两端同步 |
+| 1 ✅ | **立 HTTP API 契约**（OpenAPI 生成 + TS 类型生成）—— **已完成（2026-10-10，v0.4.0）**：`kb/api_schema.py`（spec 事实源，18 操作/37 schema，契约版本独立于应用 tag）→ `docs/api/openapi.json` → `web/src/types/api.d.ts`（openapi-typescript 生成，tsc 冒烟过）；契约测试 `demo/run_api_contract_demo.py` **双后端（内存+SQLite）**起真实 serve 全操作实测——closed schema 端点严格校验、开放 schema 端点（节点属性扩展口）校验必填与已声明字段、负例按 Error schema 校验、approved/blocked/幂等/非空记忆数组显式断言；`.github/workflows/ci.yml` 在 push/PR 到 main 时跑五 demo + 双重漂移检查（spec 重导出 diff + TS 类型重生成 diff）。经 25-agent 三维对抗审查（spec 准确性/测试严格性/CI 接线，21 条成立 finding 全部修复，含 `/stats` 后端差异、allOf 闭合陷阱、`/report` 平铺形态、Windows pwsh 吞错、lockfile 镜像源等） | 定案 3 的唯一新增债，越晚越贵 | 前端类型由 schema 生成，改一处两端同步 |
 | 2 | **主体模型**：Subject/Scope 一等公民、`partition = scope_id`、`HAS_EPISODE`/`HAS_MEMORY` 起点改 Subject、MemoryNote 状态移到边上（§3.5 改动面表） | blocker；修 §3.3 三个后果；是第 7 步 trait 层的前提 | 新 demo：**同一 Subject 跨两个平台账号，记忆互通不失忆**；**A 兑现承诺不再影响 B** |
 | 3 | **claim 租约**（§4.2）：`claim(subject_id, action, period)` 原子占位 + 租约过期 | 小、团队版必需、内核原语 | 新 demo：**两个进程同时为同一 Subject 决策，只有一个执行** |
 | 4 | **注册表化**：`NODE_TYPES`/`ID_PATTERNS`/`EDGE_TYPES`/`BLOCK_PRIORITY`/`RISK_BUDGETS`/`RULE_CHECKERS` 从模块常量改为可注入（§6.5 表） | 小时级成本；不做的话第 11 步（第二领域）无法进行 | 现有 demo 用「注入的注册表」而非模块常量，仍全绿 |

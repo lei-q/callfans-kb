@@ -27,6 +27,9 @@ python3 demo/run_executor_adapter_demo.py
 # SQLite 嵌入式后端（桌面单机形态：双进程并发去重/状态恢复）
 python3 demo/run_sqlite_demo.py
 
+# API 契约测试（OpenAPI spec ↔ serve 实现，双向防漂移）
+python3 demo/run_api_contract_demo.py
+
 # 统一 CLI（后端由 CALLFANS_STORE 决定：memory|sqlite|neo4j）
 python3 -m kb status
 python3 -m kb query "防晒"
@@ -110,6 +113,7 @@ Windows x64、Linux x64）：解压后 `./callfans` 无参数启动即打开 Web
 │   ├── maintenance.py       #   定时维护任务（daily/weekly/monthly/yearly，cron 入口）
 │   ├── cli.py               #   统一 CLI（python3 -m kb）
 │   ├── serve.py             #   本地 HTTP API + 静态页
+│   ├── api_schema.py        #   HTTP API 契约（OpenAPI 3.1 事实源）
 │   └── static/index.html    #   三栏 Web 控制台（单文件，零构建）
 ├── demo/                    # 验证套件（也是改造期回归基线）
 │   ├── seed.py              #   种子数据（6 账号 / 3 人设 / 8 话题 / 4 规则）

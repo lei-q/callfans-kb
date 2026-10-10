@@ -1,0 +1,14 @@
+{
+  "name": "callfans-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "callfans Web 前端工作区：TS 类型由 ../docs/api/openapi.json 生成（契约见 kb/api_schema.py）",
+  "type": "module",
+  "scripts": {
+    "gen": "openapi-typescript ../docs/api/openapi.json -o src/types/api.d.ts"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.5.0",
+    "typescript": "^5.6.0"
+  }
+}

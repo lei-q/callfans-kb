@@ -44,6 +44,7 @@ jobs:
           architecture: ${{ matrix.arch }}
 
       - name: Offline tests (打包前冒烟)
+        shell: bash            # Windows 默认 pwsh 只看最后一行退出码，bash 逐行 fail
         env:
           PYTHONUTF8: "1"        # Windows 控制台默认 cp1252，中文输出需 UTF-8 模式
           PYTHONIOENCODING: utf-8
@@ -51,6 +52,8 @@ jobs:
           python demo/run_demo.py
           python demo/run_memory_demo.py
           python demo/run_executor_adapter_demo.py
+          python demo/run_sqlite_demo.py
+          python demo/run_api_contract_demo.py
 
       - name: Install PyInstaller
         run: pip install pyinstaller

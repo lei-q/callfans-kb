@@ -30,3 +30,6 @@ callfans.spec.bak
 .env
 *.pem
 skills-lock.json
+
+# Web 前端
+web/node_modules/

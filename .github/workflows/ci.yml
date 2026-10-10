@@ -1,0 +1,52 @@
+name: CI
+
+# push/PR 到 main：五个离线 demo + API 契约漂移检查（轻量，无构建）
+# tag 触发的完整构建见 release.yml
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+
+      - name: Offline demos（回归基线，五个全绿才算过）
+        env:
+          PYTHONUTF8: "1"
+        run: |
+          python demo/run_demo.py
+          python demo/run_memory_demo.py
+          python demo/run_executor_adapter_demo.py
+          python demo/run_sqlite_demo.py
+          python demo/run_api_contract_demo.py
+
+      - name: 契约漂移检查（openapi.json 必须与 kb/api_schema.py 一致）
+        run: |
+          python -m kb.api_schema > /tmp/openapi.json
+          diff /tmp/openapi.json docs/api/openapi.json \
+            || { echo "::error::docs/api/openapi.json 与 kb/api_schema.py 不一致——请运行 python3 -m kb.api_schema > docs/api/openapi.json 后提交"; exit 1; }
+
+      - name: TS 类型漂移检查（api.d.ts 必须由 spec 重新生成后无差异）
+        working-directory: web
+        run: |
+          npm ci --no-fund --no-audit
+          npm run gen
+          cd ..
+          git diff --exit-code -- web/src/types/api.d.ts \
+            || { echo "::error::web/src/types/api.d.ts 过期——请在 web/ 下 npm run gen 后提交"; exit 1; }
+
+      - name: tsc 编译冒烟（生成类型可用性）
+        working-directory: web
+        run: npx tsc --noEmit
