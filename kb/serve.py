@@ -245,7 +245,31 @@ def make_handler(tools, queue, adapter):
     return Handler
 
 
+def _port_busy_action(host, port, open_browser) -> int:
+    """端口被占时的处理：是已有 callfans 实例则复用（开控制台后退出），
+    是其他程序则给出可行动的报错。返回进程退出码（不抛异常、不打 traceback）。"""
+    import urllib.request
+    url = f"http://{host}:{port}/health"
+    try:
+        with urllib.request.urlopen(url, timeout=2) as r:
+            is_callfans = r.status == 200
+    except Exception:
+        is_callfans = False
+    if is_callfans:
+        print(f"端口 {port} 上已有 callfans 实例在运行：http://{host}:{port}/")
+        if open_browser:
+            import webbrowser
+            webbrowser.open(f"http://{host}:{port}/")
+        print("复用现有实例，不重复启动。指定其他端口：serve --port 8766")
+        return 0
+    print(f"错误：端口 {port} 已被其他程序占用（且不是 callfans）。\n"
+          f"  查看占用者：lsof -nP -iTCP:{port} -sTCP:LISTEN\n"
+          f"  换端口启动：callfans serve --port 8766")
+    return 1
+
+
 def run(host="127.0.0.1", port=8765, open_browser=None):
+    import errno
     import os
     import sys
     sys.path.insert(0, os.path.dirname(os.path.dirname(
@@ -260,7 +284,13 @@ def run(host="127.0.0.1", port=8765, open_browser=None):
     store, queue = open_kb()
     tools = KBTools(store, queue)
     adapter = ExecutorAdapter(tools)
-    httpd = ThreadingHTTPServer((host, port), make_handler(tools, queue, adapter))
+    try:
+        httpd = ThreadingHTTPServer((host, port),
+                                    make_handler(tools, queue, adapter))
+    except OSError as e:
+        if getattr(e, "errno", None) == errno.EADDRINUSE:
+            return _port_busy_action(host, port, open_browser)
+        raise
     print(f"kb serve  http://{host}:{port}  "
           f"backend={type(store).__name__}  （Ctrl+C 停止）")
     if open_browser:

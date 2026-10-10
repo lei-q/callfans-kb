@@ -135,7 +135,9 @@ def cmd_serve(args):
     sys.path.insert(0, os.path.dirname(os.path.dirname(
         os.path.abspath(__file__))))
     from kb.serve import run
-    run(host=args.host, port=args.port, open_browser=not args.no_browser)
+    code = run(host=args.host, port=args.port, open_browser=not args.no_browser)
+    if code:                       # 端口冲突等友好退出（非 0），代替 traceback
+        sys.exit(code)
 
 
 # ---------------------------------------------------------------------------
